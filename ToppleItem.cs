@@ -87,29 +87,48 @@ public class ToppleItem : MonoBehaviour
             strategy.RemoveToppleItem(this);
         }
 
+        // Wait a brief moment for physics to settle before calculating footprint
+        StartCoroutine(CalculateFootprintCoroutine(pushDir.normalized));
+    }
+
+    private System.Collections.IEnumerator CalculateFootprintCoroutine(Vector3 fallDirection)
+    {
+        yield return new WaitForSeconds(1.5f);
+
+        GameBoard board = FindFirstObjectByType<GameBoard>();
+        if (board != null)
+        {
+            // The physical barrel itself becomes an impassable obstacle
+            Vector2Int gridPos = board.WorldToGrid(transform.position);
+            board.MarkTileImpassable(gridPos);
+            Debug.Log($"[ToppleItem] Marked {gridPos} as impassable.");
+        }
+
         if (spillsContents)
         {
-            SpillContents(pushDir.normalized);
+            SpillContents(fallDirection, board);
         }
     }
 
     /// <summary>
-    /// STUB: Handles generating elemental surface hazards when a barrel topples.
+    /// Handles generating elemental surface hazards when a barrel topples, triggering gameboard recipes.
     /// </summary>
-    private void SpillContents(Vector3 fallDirection)
+    private void SpillContents(Vector3 fallDirection, GameBoard board)
     {
         Debug.Log($"<color=cyan>[ToppleItem] Barrel toppled! Spilling {spillType} in direction {fallDirection}</color>");
 
-        // STUB: Particle/Hazard Instantiation Logic
-        // Gameplay Engineers:
-        // 1. Calculate the spatial footprint. The physical barrel acts as a hard obstacle blocking the tiles it lands on.
-        // 2. The spill should extend ~2 tiles BEYOND the barrel in the fallDirection.
-        // 3. Instantiate the `spillPrefab` at those extended coordinates, setting its HazardType to `spillType`.
+        if (board == null) return;
 
-        // STUB: Recipe Creation & Hazard Nullification
-        // - If the spill lands on an existing hazard, evaluate it.
-        // - E.g. Water spill landing on Fire = Nullifies both (creates steam cloud).
-        // - E.g. Oil spill landing on Fire = Ignites the oil, creating a massive Fire area.
-        // - The Dragon Brain will eventually be smart enough to intentionally topple Oil onto existing Fire.
+        // Spill extends roughly 2 tiles in the direction of the fall
+        Vector3 flatFallDirection = new Vector3(fallDirection.x, 0, fallDirection.z).normalized;
+
+        Vector3 spillPos1 = transform.position + (flatFallDirection * board.tileSize);
+        Vector3 spillPos2 = transform.position + (flatFallDirection * board.tileSize * 2f);
+
+        Vector2Int grid1 = board.WorldToGrid(spillPos1);
+        Vector2Int grid2 = board.WorldToGrid(spillPos2);
+
+        board.ApplyElementToTile(grid1, spillType);
+        board.ApplyElementToTile(grid2, spillType);
     }
 }

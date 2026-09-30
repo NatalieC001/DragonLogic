@@ -1,3 +1,4 @@
+using UnityEngine.Events;
 using UnityEngine;
 using System.Collections.Generic;
 using PixelCrushers;
@@ -17,10 +18,18 @@ public enum DragonState
     DefendMinions,
     Roam
 }
-
 public class DragonBrain : MonoBehaviour, IMessageHandler
 {
     public DragonState CurrentState { get; private set; } = DragonState.Roam;
+
+    [Header("Configuration")]
+    public DragonAIConfigSO config;
+
+    [Header("Animation Events")]
+    public UnityEvent OnPlayRoar;
+    public UnityEvent OnPlayAngryExpression;
+    public UnityEvent OnSwoopStart;
+    public UnityEvent OnSwoopEnd;
 
     [Header("Subsystems")]
     public BossNavigator navigator;
@@ -29,22 +38,10 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
     public SpatialStrategyMiniGame strategyMiniGame;
     public BossStatsAndHealth statsAndHealth;
 
-    [Header("Senses")]
-    public float aggroRadius = 15f;
-    public float attackRadius = 12f;
-
-    [Header("Topple Targeting")]
-    public float toppleReachDistance = 5f;
     private ToppleItem currentToppleTarget;
-
     private bool minionsNeedDefenseFlag = false;
-
-    [Header("Combat")]
-    public float attackCooldown = 2f;
     private float lastAttackTime;
-    
     private float damageAccumulator = 0f;
-    private float healthPerSegment = 10f;
 
     private Transform player;
 
@@ -91,19 +88,18 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         }
 
         // 3. Check Aggressive / Spatial Control Priorities
-        if (PlayerInRange(attackRadius))
+        // The Asian Dragon is always moving and evaluating tactical needs rather than using arbitrary radii.
+        if (player != null)
         {
+            // If the player exists, we are always willing to attack or deny area
             validStates.Add(DragonState.AttackPlayer);
-            validStates.Add(DragonState.DenyArea); // Spatial control
+            validStates.Add(DragonState.DenyArea);
 
-            if (strategyMiniGame.GetOptimalToppleTarget() != null)
+            // If there's a good topple target (recipe or standard), prioritize it
+            if (strategyMiniGame != null && strategyMiniGame.GetStrategicToppleTarget().pillar != null)
             {
                 validStates.Add(DragonState.TopplePillar);
             }
-        }
-        else if (PlayerInRange(aggroRadius))
-        {
-            validStates.Add(DragonState.AttackPlayer);
         }
 
         // 4. Default to Roam if nothing else
@@ -142,6 +138,9 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
 
                 if (currentToppleTarget != null && navigator != null)
                 {
+                    OnSwoopStart?.Invoke();
+                    OnPlayAngryExpression?.Invoke();
+
                     // We calculate a point "behind" the pillar along the optimal hit direction.
                     // The dragon flies to this setup point, then swoops *through* the pillar.
                     // For now, we command the navigator to fly a trajectory through the pillar.
@@ -199,10 +198,12 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
             // To prevent a soft-lock if the dragon somehow misses the pillar or gets stuck pathing:
             // 1. If it gets close enough to have completed the run OR
             // 2. If it has been stuck in this state for too long (failsafe)
-            if (distance <= toppleReachDistance)
+            float reachDist = config != null ? config.toppleReachDistance : 5f;
+            if (distance <= reachDist)
             {
                 Debug.Log($"[DragonBrain] Ramming run complete (passed pillar {currentToppleTarget.name}). Evaluating next state.");
                 currentToppleTarget = null;
+                OnSwoopEnd?.Invoke();
                 EvaluateState();
             }
         }
@@ -211,7 +212,8 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
     private void TryFireball(Vector3 targetPosition)
     {
         if (fireball == null) return;
-        if (Time.time - lastAttackTime < attackCooldown) return;
+        float cooldown = config != null ? config.attackCooldown : 2f;
+        if (Time.time - lastAttackTime < cooldown) return;
 
         fireball.LaunchAt(targetPosition);
         lastAttackTime = Time.time;
@@ -253,9 +255,10 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
             damageAccumulator += amount;
             statsAndHealth.TakeDamage(amount, ElementTypeOB7.Normal);
             
-            if (damageAccumulator >= healthPerSegment && dragon.BodySegmentCount > 3)
+            float hpPerSeg = config != null ? config.healthPerSegment : 10f;
+            if (damageAccumulator >= hpPerSeg && dragon.BodySegmentCount > 3)
             {
-                damageAccumulator -= healthPerSegment;
+                damageAccumulator -= hpPerSeg;
                 dragon.ShedOneBodySegment();
                 OnHealthSegmentLost();
             }
@@ -265,6 +268,7 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
 
     private void CommandMinionsToCharge()
     {
+        OnPlayRoar?.Invoke();
         MessageSystem.SendMessage(this, "DragonNeedsSupport", string.Empty);
     }
 
@@ -288,9 +292,5 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         return val;
     }
 
-    private bool PlayerInRange(float radius)
-    {
-        if (player == null) return false;
-        return Vector3.Distance(transform.position, player.position) <= radius;
-    }
+    // PlayerInRange was removed in favor of constant tactical evaluation
 }

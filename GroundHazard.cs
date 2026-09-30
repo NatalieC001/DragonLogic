@@ -1,3 +1,4 @@
+using UnityEngine.Events;
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
@@ -8,6 +9,7 @@ using System.Collections.Generic;
 /// </summary>
 public enum HazardType
 {
+    None,
     DarkMist,
     Electricity,
     Fire,
@@ -16,18 +18,15 @@ public enum HazardType
     Water,
     Oil
 }
-
 [RequireComponent(typeof(Collider))]
 public class GroundHazard : MonoBehaviour, IArrowTarget
 {
-    [Tooltip("Damage per second applied to anything tagged 'Player' (or with PlayerHealth component).")]
-    public float damagePerSecond = 10f;
-
-    [Tooltip("Total duration before the hazard is destroyed.")]
-    public float duration = 12f;
-
     [Header("Hazard Configuration")]
+    public HazardConfigSO config;
     public HazardType hazardType = HazardType.DarkMist;
+
+    [Header("Events")]
+    public UnityEvent OnDispelTriggered;
 
     private Collider triggerCollider;
     private readonly HashSet<GameObject> playersInside = new HashSet<GameObject>();
@@ -47,15 +46,21 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
         if (strategy != null) strategy.RegisterHazardZone(transform.position);
     }
 
+    private float currentDispelHealth;
+
     private void OnEnable()
     {
-        StartCoroutine(Lifetime());
-        StartCoroutine(DamageTick());
+        if (config != null)
+        {
+            currentDispelHealth = config.dispelHealth;
+            StartCoroutine(Lifetime());
+            StartCoroutine(DamageTick());
+        }
+        else
+        {
+            Debug.LogError("[GroundHazard] No HazardConfigSO assigned!");
+        }
     }
-
-    [Header("Dispel Mechanic")]
-    [Tooltip("Amount of damage required to clear this hazard. A full power shot outside the hazard should equal this.")]
-    public float dispelHealth = 100f;
 
     // --- STUB: Dispel Mechanic ---
     // Game Designers: The player can sacrifice time to draw a full-power shot.
@@ -64,10 +69,10 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
     // meaning they will have to shoot the tile twice to accumulate enough damage to dispel it.
     public void OnArrowHit(float damage, Vector3 impactPoint, ElementTypeOB7 elementType)
     {
-        dispelHealth -= damage;
-        Debug.Log($"[GroundHazard] Arrow hit dark fire. Took {damage} damage. Remaining: {dispelHealth}");
+        currentDispelHealth -= damage;
+        Debug.Log($"[GroundHazard] Arrow hit dark fire. Took {damage} damage. Remaining: {currentDispelHealth}");
 
-        if (dispelHealth <= 0)
+        if (currentDispelHealth <= 0)
         {
             Debug.Log($"<color=cyan>[GroundHazard] Dark fire dispelled!</color>");
             Dispel();
@@ -76,19 +81,30 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
 
     private void Dispel()
     {
-        // Visuals can be added here (e.g., a burst of purifying light)
-
-        // Unregister from the spatial mini game so it knows the tile is safe again
-        // (Note: The current SpatialStrategyMiniGame activeHazardZones list would need a RemoveHazardZone method
-        // if it needs immediate updates, though right now it just tracks spots permanently for the duration).
-
+        OnDispelTriggered?.Invoke();
+        ClearFromGameBoard();
         Destroy(gameObject);
     }
 
     private IEnumerator Lifetime()
     {
-        yield return new WaitForSeconds(duration);
+        yield return new WaitForSeconds(config.duration);
+        ClearFromGameBoard();
         Destroy(gameObject);
+    }
+
+    private void ClearFromGameBoard()
+    {
+        GameBoard board = FindFirstObjectByType<GameBoard>();
+        if (board != null)
+        {
+            Vector2Int pos = board.WorldToGrid(transform.position);
+            // Only clear it if it's still registered to us (in case it was overwritten)
+            if (board.GetTileState(pos) == hazardType)
+            {
+                board.ApplyElementToTile(pos, HazardType.None);
+            }
+        }
     }
 
     private IEnumerator DamageTick()
@@ -99,7 +115,8 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
         {
             if (playersInside.Count > 0)
             {
-                float damageThisTick = damagePerSecond * Time.fixedDeltaTime;
+                // We use fixedDeltaTime as intended, applying a slice of damage every fixed frame
+                float damageThisTick = config.damagePerSecond * Time.fixedDeltaTime;
 
                 foreach (var go in playersInside)
                 {
@@ -122,25 +139,81 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
                         // (handles projects where PlayerHealth may differ).
                         ph.gameObject.SendMessage("TakeDamage", damageThisTick, SendMessageOptions.DontRequireReceiver);
 
-                        // Example hook for the future Sticky effect:
-                        if (hazardType == HazardType.Sticky)
-                        {
-                            ph.gameObject.SendMessage("ApplyStickyDebuff", SendMessageOptions.DontRequireReceiver);
-                        }
+                        ApplyDebuffs(ph.gameObject);
                     }
                     else
                     {
                         // Fallback: try SendMessage on the collider game object
                         go.SendMessage("TakeDamage", damageThisTick, SendMessageOptions.DontRequireReceiver);
 
-                        if (hazardType == HazardType.Sticky)
-                        {
-                            go.SendMessage("ApplyStickyDebuff", SendMessageOptions.DontRequireReceiver);
-                        }
+                        ApplyDebuffs(go);
                     }
                 }
             }
             yield return wait;
+        }
+    }
+
+    private Collider[] overlapBuffer = new Collider[10];
+
+    private void ApplyDebuffs(GameObject target)
+    {
+        switch (hazardType)
+        {
+            case HazardType.Sticky:
+                target.SendMessage("ApplyStickyDebuff", SendMessageOptions.DontRequireReceiver);
+                break;
+            case HazardType.Fire:
+                target.SendMessage("ApplyBurn", SendMessageOptions.DontRequireReceiver);
+                break;
+            case HazardType.Ice:
+                target.SendMessage("ApplySlow", SendMessageOptions.DontRequireReceiver);
+                break;
+            case HazardType.Electricity:
+                // Check if standing on metal/water for double damage using NonAlloc
+                int numOverlaps = Physics.OverlapSphereNonAlloc(transform.position, transform.localScale.x, overlapBuffer);
+                bool conductive = false;
+                for (int i = 0; i < numOverlaps; i++)
+                {
+                    if (overlapBuffer[i].CompareTag("ConductiveMetal") || overlapBuffer[i].CompareTag("WaterPuddle"))
+                    {
+                        conductive = true;
+                        break;
+                    }
+                }
+                if (conductive) target.SendMessage("TakeDamage", config.damagePerSecond * Time.fixedDeltaTime, SendMessageOptions.DontRequireReceiver); // double dip
+                target.SendMessage("ApplyShock", SendMessageOptions.DontRequireReceiver);
+                break;
+            case HazardType.DarkMist:
+                // Blindness is now triggered exactly once via OnTriggerEnter.
+                break;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Failsafe: If hazard is destroyed while players are inside, clear their debuffs
+        foreach (var go in playersInside)
+        {
+            if (go != null)
+            {
+                switch (hazardType)
+                {
+                    case HazardType.Sticky:
+                        go.SendMessage("RemoveStickyDebuff", SendMessageOptions.DontRequireReceiver);
+                        break;
+                    case HazardType.Fire:
+                        go.SendMessage("RemoveBurn", SendMessageOptions.DontRequireReceiver);
+                        break;
+                    case HazardType.Ice:
+                        go.SendMessage("RemoveSlow", SendMessageOptions.DontRequireReceiver);
+                        break;
+                    case HazardType.DarkMist:
+                        var blindness = go.GetComponentInChildren<VRHeadsetStickyBlindness>();
+                        if (blindness != null) blindness.StartRecovery();
+                        break;
+                }
+            }
         }
     }
 
@@ -149,6 +222,12 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
         if (other.gameObject.CompareTag("Player"))
         {
             playersInside.Add(other.gameObject);
+            // Trigger immediately upon entry for responsive feedback
+            if (hazardType == HazardType.DarkMist)
+            {
+                var blindness = other.gameObject.GetComponentInChildren<VRHeadsetStickyBlindness>();
+                if (blindness != null) blindness.TriggerBlindness();
+            }
         }
     }
 
@@ -158,11 +237,21 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
         {
             playersInside.Remove(other.gameObject);
 
-            // --- STUB: Remove Hazard Debuffs ---
-            // If the player steps out of a Sticky hazard, restore bow draw speed.
-            if (hazardType == HazardType.Sticky)
+            switch (hazardType)
             {
-                other.gameObject.SendMessage("RemoveStickyDebuff", SendMessageOptions.DontRequireReceiver);
+                case HazardType.Sticky:
+                    other.gameObject.SendMessage("RemoveStickyDebuff", SendMessageOptions.DontRequireReceiver);
+                    break;
+                case HazardType.Fire:
+                    other.gameObject.SendMessage("RemoveBurn", SendMessageOptions.DontRequireReceiver);
+                    break;
+                case HazardType.Ice:
+                    other.gameObject.SendMessage("RemoveSlow", SendMessageOptions.DontRequireReceiver);
+                    break;
+                case HazardType.DarkMist:
+                    var blindness = other.gameObject.GetComponentInChildren<VRHeadsetStickyBlindness>();
+                    if (blindness != null) blindness.StartRecovery();
+                    break;
             }
         }
     }
