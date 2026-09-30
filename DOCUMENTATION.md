@@ -18,6 +18,25 @@ This codebase relies on two primary message systems to decouple components:
 
 **Player Experience:** The player perceives a highly intelligent, reactive opponent. When the player shoots its minions, it might aggressively swoop down; when it loses too many segments, it will retreat in a panic to heal.
 
+
+**Core Logic & Utility Scoring (Desire Table):**
+The `DragonBrain` relies on a Utility Scoring System to evaluate tactical priorities dynamically, replacing rigid if/else blocks. This system calculates "desire scores" for various states based on internal variables and external events (such as minions under attack or segments lost).
+
+| State | Condition / Influences | Desire Score |
+| :--- | :--- | :--- |
+| `FleeToHeal` | **Absolute Priority:** If `needsHealingImperative` is true and crystal is available. | `100f` |
+| `FleeToHeal` | **Scaling Priority:** If segments are lost, score scales proportionally based on percentage of lost segments. | `0f` to `50f` |
+| `DefendMinions`| Triggers when the `"MinionUnderFire"` message is received via PixelCrushers MessageSystem. | `75f` (if flagged) or `0f` |
+| `TopplePillar` | **Opportunistic:** Evaluates environmental puzzle recipes (e.g. Oil opportunities) provided by `SpatialStrategyMiniGame`. | `60f` (or `90f` if Oil recipe) or `0f` |
+| `AttackPlayer` | **Baseline Aggression:** Always active if the player exists. | `40f` |
+| `DenyArea`     | **Baseline Tactical:** Always active if the player exists (used for shooting hazards). | `35f` |
+| `Roam`         | **Fallback:** Default state if no other action is prioritized. | `10f` |
+
+**Event-Driven Triggers:**
+*   **Minions Under Attack:** When a minion is hit, it broadcasts `"MinionUnderFire"`. The `DragonBrain` intercepts this, flags `minionsNeedDefenseFlag`, and forces a state evaluation, potentially spiking the `DefendMinions` desire score to 75.
+*   **The Crystal Undertake (Healing Imperative):** The `SegmentManager` tracks health parts. When it reaches a critical threshold, it fires `OnHealingImperativeReached`. The brain drops all priorities, sets `needsHealingImperative = true`, commands minions to charge to cover its retreat, and spikes the `FleeToHeal` score to 100 to retreat to the crystal.
+*   **Visual Impairment:** If the player is blinded (`VRHeadsetStickyBlindness.OnPlayerBlinded`), the dragon exploits this by commanding minions to charge.
+
 ```mermaid
 classDiagram
     class DragonBrain {
@@ -201,6 +220,14 @@ classDiagram
 
 **Player Experience:** The player realizes that destroying enough segments forces the dragon to change its behavior entirely, retreating defensively instead of pressing the attack.
 
+
+**Core Logic & Event Hooks:**
+`SegmentManager` acts as the physical tracker for the dragon's body size, separating visual movement from tactical calculations.
+
+*   **Destruction Pipeline:** When a `DragonSegment` reaches 0 health, it sends `"SegmentDestroyed"` via `MessageSystem`. The `SegmentManager` intercepts this, removes the segment from the tracking list, recalculates spacing to trigger gap closure (allowing the snake movement script to seamlessly stitch the body back together), and finally broadcasts the `OnSegmentLost` and `OnSegmentCountChanged` C# Actions to alert the `DragonBrain`.
+*   **Healing Imperative Evaluation:** After every lost segment, it evaluates the `criticalSegmentThreshold` (from `DragonAIConfigSO`). If the remaining living segments fall below this threshold, it invokes `OnHealingImperativeReached`, triggering the `DragonBrain`'s retreat response.
+*   **Regeneration Handling:** While near the crystal (tracked via `"DragonReachedCrystal"` and `"DragonLeftCrystal"` PixelCrushers messages), the manager slowly regrows segments one by one based on `regrowCooldown`. Once the max segment count is reached, it fires `OnFullyHealed`.
+
 ```mermaid
 classDiagram
     class SegmentManager {
@@ -291,6 +318,13 @@ classDiagram
 **Purpose:** Defines a tactical location in the environment. Can be commanded by the `MessageSystem` to release hidden minions when the dragon requires support.
 
 **Player Experience:** The environment feels alive; when the dragon roars for help, enemies pour out of specific crevices or doorways, changing the flow of the battle.
+
+
+**Core Logic & Event Hooks:**
+`CoverPoint` acts as a tactical staging ground for minions before they enter active combat.
+
+*   **Capacity Trigger:** When minions reach the cover point, they register themselves. If the point reaches its defined `capacity`, it automatically triggers all hiding minions to enter their charge/attack state.
+*   **Dragon Synergy:** It actively listens for the `"DragonNeedsSupport"` message via the `PixelCrushers` message system. When the Dragon fires this message (often in response to losing segments or the player being blinded), the `CoverPoint` instantly overrides its capacity wait and forces all currently hiding minions to attack the player.
 
 ```mermaid
 classDiagram
