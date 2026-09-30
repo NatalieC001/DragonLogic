@@ -6,7 +6,6 @@ using System.Collections.Generic;
 /// Ground hazard (dark mist) that applies damage-over-time to Player when inside its trigger.
 /// The prefab should have a trigger Collider (e.g., SphereCollider) and optionally a particle system.
 /// </summary>
-[RequireComponent(typeof(Collider))]
 public enum HazardType
 {
     DarkMist,
