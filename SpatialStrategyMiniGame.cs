@@ -150,14 +150,61 @@ public class SpatialStrategyMiniGame : MonoBehaviour
     {
         ToppleTargetData result = new ToppleTargetData { pillar = null, optimalHitDirection = Vector3.forward, isRecipeOpportunity = false };
 
-        // --- STUB: Recipe Opportunity Check ---
-        // Before falling back to standard player-blocking topples, check if we can create an advantageous recipe.
-        // Example logic:
-        // 1. Check activeHazardZones for existing Fire hazards.
-        // 2. Iterate availableToppleItems for barrels where `spillType == HazardType.Oil`.
-        // 3. If an Oil barrel can be toppled into a Fire hazard, return that barrel and the trajectory to hit the Fire.
-        // result.isRecipeOpportunity = true;
-        // --------------------------------------
+        // Recipe Opportunity Check using GameBoard
+        GameBoard board = FindFirstObjectByType<GameBoard>();
+        if (board != null)
+        {
+            foreach (var item in availableToppleItems)
+            {
+                if (item == null || item.IsToppled) continue;
+
+                // Example Recipe: Oil into Fire
+                if (item.spillType == HazardType.Oil)
+                {
+                    // Check if there is a Fire hazard within topple distance
+                    // (Roughly 2 tiles away from the barrel)
+                    for (int x = -2; x <= 2; x++)
+                    {
+                        for (int y = -2; y <= 2; y++)
+                        {
+                            Vector2Int gridPos = board.WorldToGrid(item.transform.position) + new Vector2Int(x, y);
+                            if (board.GetTileState(gridPos) == HazardType.Fire)
+                            {
+                                Vector3 fireWorldPos = board.GridToWorld(gridPos);
+                                Vector3 fallDir = (fireWorldPos - item.transform.position).normalized;
+
+                                result.pillar = item;
+                                result.optimalHitDirection = fallDir;
+                                result.isRecipeOpportunity = true;
+                                return result;
+                            }
+                        }
+                    }
+                }
+
+                // Example Recipe: Water into Fire
+                if (item.spillType == HazardType.Water)
+                {
+                    for (int x = -2; x <= 2; x++)
+                    {
+                        for (int y = -2; y <= 2; y++)
+                        {
+                            Vector2Int gridPos = board.WorldToGrid(item.transform.position) + new Vector2Int(x, y);
+                            if (board.GetTileState(gridPos) == HazardType.Fire)
+                            {
+                                Vector3 fireWorldPos = board.GridToWorld(gridPos);
+                                Vector3 fallDir = (fireWorldPos - item.transform.position).normalized;
+
+                                result.pillar = item;
+                                result.optimalHitDirection = fallDir;
+                                result.isRecipeOpportunity = true;
+                                return result;
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         ToppleItem optimalPillar = GetOptimalToppleTarget();
         if (optimalPillar == null) return result;
