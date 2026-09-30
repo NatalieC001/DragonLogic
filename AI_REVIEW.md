@@ -96,3 +96,13 @@ The Dragon's spatial control arsenal is being expanded to utilize different elem
 
 **Player Counter-Play:**
 In addition to the "Dispel" mechanic (shooting the hazard directly to clear it), a future strategy involves allowing the player to cast temporary "Enchantments" on specific small areas of the plane. This would immunize that patch of ground from being captured or corrupted by the Dragon's hazards for a short time, giving the player a safe foothold to maneuver and fight back.
+
+
+### Level Design Mechanic: Puzzle Levers
+A new interactive script, `PuzzleLever.cs`, has been introduced. Players can shoot these levers to manipulate the environment (e.g., exposing hidden minion clusters before they are fully formed).
+
+**Mechanic Details:**
+- Levers require a **Full Power Shot** (configured via `requiredDamage`, defaulting to 50f) to activate.
+- Upon activation, they smoothly translate a target `GameObject` (the cover) over a specified distance and direction.
+- Once the cover moves, any attached `CoverPoint` is immediately instructed to trigger its hiding minions to charge the player.
+- **Editor Visuals:** The script includes `OnDrawGizmos` to render a yellow line from the lever to its target cover, and a magenta trajectory line showing exactly where the cover will move and rest.
