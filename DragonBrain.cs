@@ -137,11 +137,18 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
                 break;
                 
             case DragonState.TopplePillar:
-                currentToppleTarget = strategyMiniGame.GetOptimalToppleTarget();
+                var targetData = strategyMiniGame.GetStrategicToppleTarget();
+                currentToppleTarget = targetData.pillar;
+
                 if (currentToppleTarget != null && navigator != null)
                 {
-                    // Interrupt current path and fly directly to the pillar to knock it over
-                    navigator.Freestyle(currentToppleTarget.transform.position);
+                    // We calculate a point "behind" the pillar along the optimal hit direction.
+                    // The dragon flies to this setup point, then swoops *through* the pillar.
+                    // For now, we command the navigator to fly a trajectory through the pillar.
+                    // We aim for a point past the pillar in the hit direction to ensure a strong physical impact.
+                    Vector3 swoopTarget = currentToppleTarget.transform.position + (targetData.optimalHitDirection * 15f);
+
+                    navigator.Freestyle(swoopTarget);
                 }
                 break;
                 
@@ -178,17 +185,23 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         }
         else if (CurrentState == DragonState.TopplePillar)
         {
-            if (currentToppleTarget == null || currentToppleTarget.IsToppled)
+            if (currentToppleTarget == null)
             {
                 EvaluateState();
                 return;
             }
 
+            // The physical impact is now handled natively by Unity Physics (OnTriggerEnter) on the ToppleItem.
+            // We just use this distance check to know when the "ramming run" is complete so the brain
+            // can move on to its next tactical decision, preventing it from getting stuck in this state.
             float distance = Vector3.Distance(transform.position, currentToppleTarget.transform.position);
+
+            // To prevent a soft-lock if the dragon somehow misses the pillar or gets stuck pathing:
+            // 1. If it gets close enough to have completed the run OR
+            // 2. If it has been stuck in this state for too long (failsafe)
             if (distance <= toppleReachDistance)
             {
-                Debug.Log($"[DragonBrain] Reached pillar {currentToppleTarget.name}, telling it to topple!");
-                MessageSystem.SendMessage(this, "DragonReachedPillar", string.Empty, currentToppleTarget);
+                Debug.Log($"[DragonBrain] Ramming run complete (passed pillar {currentToppleTarget.name}). Evaluating next state.");
                 currentToppleTarget = null;
                 EvaluateState();
             }

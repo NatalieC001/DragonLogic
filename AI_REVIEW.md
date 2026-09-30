@@ -67,7 +67,11 @@ I reviewed the architecture overview you provided and attempted to break it. I f
 
 ### Risk 2: The Topple Pillar Soft-Lock (Fixed)
 **The Problem:** The `DragonBrain` could transition into `DragonState.TopplePillar` and command the `BossNavigator` to fly to the pillar. However, there was no code in the `Update()` loop checking if the dragon ever *arrived* at the pillar. The dragon would fly to the pillar and just hover there forever, soft-locking the AI state machine. `ToppleItem.Topple()` was never being invoked.
-**The Fix:** I added logic to `DragonBrain.Update()` to measure the distance to the target pillar. Once within `toppleReachDistance`, it broadcasts a `DragonReachedPillar` message to the environment via `PixelCrushers.MessageSystem`. The `ToppleItem` script acts as a listener; when it receives the message, it calculates the attack angle based on the sender's transform and topples itself. This maintains the rigid separation of concerns. I also added a safety check: if the pillar is destroyed before the dragon reaches it, the dragon will immediately evaluate a new state.
+**The Fix (Physical Trajectory Update):** I updated the `SpatialStrategyMiniGame` to return both the optimal pillar AND the strategic vector it should fall to effectively corral the player.
+
+The `DragonBrain` now uses this data to plot a flight trajectory *through* the pillar rather than just stopping at it. This creates a visual telegraph (an arc/swoop) warning the player of the dragon's intent.
+
+The `ToppleItem.cs` script has been updated to use native Unity physics (`OnTriggerEnter`). When the Dragon's physical collider hits the pillar, the pillar reads the Dragon's forward momentum vector and falls natively. This preserves pure separation of concerns: the Dragon just flies a path, and the Pillar just reacts to being hit. The `DragonBrain.Update()` loop now just uses distance to know when its ramming run is complete so it can pick its next action.
 
 ### Risk 3: Minion Defense Always Returned False (Fixed)
 **The Problem:** The `DragonBrain.MinionsNeedDefense()` method was hardcoded to `return false;`. The dragon would never enter the `DefendMinions` state.
@@ -84,15 +88,30 @@ This mechanic revolves around a **Full Power Shot** (which takes ~1 second to fu
   - If the player is standing **inside** the hazard, their shots are weakened by the `StickyBlindness` debuff (dealing 50 damage), meaning they must shoot the tile **2 times** to clear it.
 - **Next Steps for Weapons Engineer:** When updating the Bow/Arrow scripts, ensure a fully drawn bow deals exactly enough base damage to clear a tile in one shot, and that the `VRHeadsetStickyBlindness` script halves arrow damage when active. This same fully-charged requirement should be mapped to the puzzle levers.
 
-### Future Territory Control Expansion (Game Designer Note)
+### Future Territory Control Expansion & Elemental Spills (Game Designer Note)
 The Dragon's spatial control arsenal is being expanded to utilize different elemental hazards that synergize with the environment. `GroundHazard.cs` has been updated with a `HazardType` enum to support these new variations.
 
-**Planned Hazard Variations:**
+Furthermore, `ToppleItem` structures are no longer limited to just stone pillars—they can now represent barrels of Oil, Water, or Sticky substances. While flying to a barrel takes more time than simply shooting a fireball at the floor, it offers a massive strategic advantage: the physical barrel acts as hard cover/blockage on the tile it lands on, while its contents spill outward ~2 tiles in the direction of the fall.
+
+**Planned Hazard & Spill Variations:**
 - **Dark Mist (Current):** Blinds the player and weakens arrows.
-- **Sticky Substance:** Coats the player and the bow, increasing the bow draw speed 3x.
+- **Sticky Substance:** Coats the player and the bow, increasing the bow draw speed 3x. (Can be spilled via barrels).
 - **Fire:** Ignites the ground, preventing safe passage and applying a burning DoT.
-- **Ice:** Creates slippery or slowing terrain.
-- **Electricity:** Electrifies the ground. This will synergize with environmental properties; for example, if an electric hazard is placed on a "Conductive Metal Sheet," its effective area and damage may drastically increase (or synergize with water puddles).
+- **Water / Oil (Spills):** These barrels create foundational hazard zones that enable "Recipe Creation."
+- **Ice / Electricity:** Standard elemental zones. Electricity will synergize with environmental properties (e.g., if placed on a "Conductive Metal Sheet" or a Water puddle, its effective area drastically increases).
+
+**Recipe Creation (Advanced Dragon AI):**
+If a spill overlaps an existing hazard, it triggers a reaction. For example, Water landing on Fire nullifies the hazard. Oil landing on Fire ignites into a massive inferno. In the future, the Dragon AI will be smart enough to intentionally execute these combos (e.g., toppling an oil barrel into a burning tile to maximize territory capture).
 
 **Player Counter-Play:**
 In addition to the "Dispel" mechanic (shooting the hazard directly to clear it), a future strategy involves allowing the player to cast temporary "Enchantments" on specific small areas of the plane. This would immunize that patch of ground from being captured or corrupted by the Dragon's hazards for a short time, giving the player a safe foothold to maneuver and fight back.
+
+
+### Level Design Mechanic: Puzzle Levers
+A new interactive script, `PuzzleLever.cs`, has been introduced. Players can shoot these levers to manipulate the environment (e.g., exposing hidden minion clusters before they are fully formed).
+
+**Mechanic Details:**
+- Levers require a **Full Power Shot** (configured via `requiredDamage`, defaulting to 50f) to activate.
+- Upon activation, they smoothly translate a target `GameObject` (the cover) over a specified distance and direction.
+- Once the cover moves, any attached `CoverPoint` is immediately instructed to trigger its hiding minions to charge the player.
+- **Editor Visuals:** The script includes `OnDrawGizmos` to render a yellow line from the lever to its target cover, and a magenta trajectory line showing exactly where the cover will move and rest.
