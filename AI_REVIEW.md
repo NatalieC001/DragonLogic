@@ -67,9 +67,11 @@ I reviewed the architecture overview you provided and attempted to break it. I f
 
 ### Risk 2: The Topple Pillar Soft-Lock (Fixed)
 **The Problem:** The `DragonBrain` could transition into `DragonState.TopplePillar` and command the `BossNavigator` to fly to the pillar. However, there was no code in the `Update()` loop checking if the dragon ever *arrived* at the pillar. The dragon would fly to the pillar and just hover there forever, soft-locking the AI state machine. `ToppleItem.Topple()` was never being invoked.
-**The Fix:** I added logic to `DragonBrain.Update()` to actively measure the distance between the dragon and the target pillar while in the `TopplePillar` state. Once the dragon gets close enough (within `toppleReachDistance`), the `DragonBrain` broadcasts a `"DragonReachedPillar"` message via `PixelCrushers.MessageSystem`, signaling to the environment that the dragon has arrived and is executing the topple action. It then immediately evaluates a new tactical state, breaking the soft-lock.
+**The Fix (Physical Trajectory Update):** I updated the `SpatialStrategyMiniGame` to return both the optimal pillar AND the strategic vector it should fall to effectively corral the player.
 
-The `ToppleItem.cs` script has been updated to listen for this broadcast. When it hears `"DragonReachedPillar"`, it confirms it is the intended target, independently calculates the physics trajectory based on the dragon's incoming vector, and triggers its own rigidbody to fall over. This preserves the strict separation of concerns: the Dragon only worries about moving and signaling its arrival, while the Pillar solely handles the physics of falling.
+The `DragonBrain` now uses this data to plot a flight trajectory *through* the pillar rather than just stopping at it. This creates a visual telegraph (an arc/swoop) warning the player of the dragon's intent.
+
+The `ToppleItem.cs` script has been updated to use native Unity physics (`OnTriggerEnter`). When the Dragon's physical collider hits the pillar, the pillar reads the Dragon's forward momentum vector and falls natively. This preserves pure separation of concerns: the Dragon just flies a path, and the Pillar just reacts to being hit. The `DragonBrain.Update()` loop now just uses distance to know when its ramming run is complete so it can pick its next action.
 
 ### Risk 3: Minion Defense Always Returned False (Fixed)
 **The Problem:** The `DragonBrain.MinionsNeedDefense()` method was hardcoded to `return false;`. The dragon would never enter the `DefendMinions` state.

@@ -1,10 +1,8 @@
 using UnityEngine;
-using PixelCrushers;
-
 /// <summary>
 /// Attached to destructible/interactive environmental structures (pillars, scaffolding, walls).
 /// </summary>
-public class ToppleItem : MonoBehaviour, IMessageHandler
+public class ToppleItem : MonoBehaviour
 {
     public bool IsToppled { get; private set; } = false;
     
@@ -12,30 +10,43 @@ public class ToppleItem : MonoBehaviour, IMessageHandler
     public float toppleForce = 15f;
     public Vector3 toppleDirectionOverride = Vector3.zero;
 
+    private void Awake()
+    {
+        // Enforce physics variables in code to prevent manual inspector errors
+        gameObject.layer = LayerMask.NameToLayer("Default"); // Ensure it can be collided with
+
+        Collider col = GetComponent<Collider>();
+        if (col != null)
+        {
+            col.isTrigger = false; // Solid physical object
+        }
+
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true; // Wait for the dragon to hit it before physics takes over
+        }
+    }
+
     /// <summary>
     /// Triggered by the Dragon when it attacks this object.
     /// </summary>
-    private void OnEnable()
+    private void OnCollisionEnter(Collision collision)
     {
-        MessageSystem.AddListener(this, "DragonReachedPillar", string.Empty);
-    }
-
-    private void OnDisable()
-    {
-        MessageSystem.RemoveListener(this, "DragonReachedPillar", string.Empty);
-    }
-
-    public void OnMessage(MessageArgs messageArgs)
-    {
-        if (messageArgs.message == "DragonReachedPillar")
+        // If the Dragon's physical body hits the pillar, natively topple it.
+        // The dragon should have a Rigidbody (even if kinematic) and be appropriately tagged or layered.
+        if (collision.collider.CompareTag("Enemy") || collision.collider.GetComponentInParent<DragonBrain>() != null)
         {
-            // Only topple if THIS pillar was the intended target.
-            if (messageArgs.values != null && messageArgs.values.Length > 0 && messageArgs.values[0] as ToppleItem == this)
+            // Calculate the physical impact vector based on the Dragon's forward momentum
+            Vector3 impactDir = collision.transform.forward;
+
+            // Fallback just in case forward is zeroed
+            if (impactDir.sqrMagnitude < 0.01f)
             {
-                Transform dragonTransform = ((Component)messageArgs.sender).transform;
-                Vector3 attackDir = (transform.position - dragonTransform.position).normalized;
-                Topple(attackDir);
+                impactDir = (transform.position - collision.transform.position).normalized;
             }
+
+            Topple(impactDir);
         }
     }
 

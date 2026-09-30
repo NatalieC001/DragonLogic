@@ -133,6 +133,53 @@ public class SpatialStrategyMiniGame : MonoBehaviour
         return bestItem;
     }
 
+
+    public struct ToppleTargetData
+    {
+        public ToppleItem pillar;
+        public Vector3 optimalHitDirection;
+    }
+
+    /// <summary>
+    /// Returns the optimal pillar to topple AND the strategic direction the Dragon should hit it from.
+    /// The goal is to push the pillar so it blocks the player's path toward the arena center,
+    /// effectively corralling them and knocking floor tiles out of action.
+    /// </summary>
+    public ToppleTargetData GetStrategicToppleTarget()
+    {
+        ToppleTargetData result = new ToppleTargetData { pillar = null, optimalHitDirection = Vector3.forward };
+
+        ToppleItem optimalPillar = GetOptimalToppleTarget();
+        if (optimalPillar == null) return result;
+
+        result.pillar = optimalPillar;
+
+        // Calculate the vector we want the pillar to FALL toward.
+        // We want it to fall between the player and the center, creating a wall.
+        Vector3 playerPos = player.position;
+        playerPos.y = 0;
+        Vector3 centerPos = arenaCenter.position;
+        centerPos.y = 0;
+
+        // The point we want to block
+        Vector3 blockPoint = playerPos + (centerPos - playerPos).normalized * 5f;
+
+        // The direction the pillar needs to fall to land on that block point
+        Vector3 fallDirection = (blockPoint - optimalPillar.transform.position).normalized;
+
+        // If the pillar is already exactly on the block point (rare), just push it towards the player.
+        if (fallDirection.sqrMagnitude < 0.01f)
+        {
+            fallDirection = (playerPos - optimalPillar.transform.position).normalized;
+        }
+
+        // The dragon must hit the pillar from the OPPOSITE direction of where it should fall.
+        // E.g., if we want it to fall North, the dragon must hit it flying North (from the South).
+        result.optimalHitDirection = fallDirection;
+
+        return result;
+    }
+
     public void RemoveToppleItem(ToppleItem item)
     {
         if (availableToppleItems.Contains(item))
