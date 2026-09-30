@@ -5,8 +5,7 @@ using PixelCrushers;
 
 /// <summary>
 /// Pillar C - Event-Driven Tactician
-/// Replaces the old Update-polling loop. Evaluates states dynamically based on events.
-/// Relies on SpatialStrategyMiniGame for spatial targets and BossNavigator for movement execution.
+/// Uses a Utility Scoring system to intelligently evaluate tactial priorities.
 /// </summary>
 public enum DragonState
 {
@@ -18,6 +17,7 @@ public enum DragonState
     DefendMinions,
     Roam
 }
+
 public class DragonBrain : MonoBehaviour, IMessageHandler
 {
     public DragonState CurrentState { get; private set; } = DragonState.Roam;
@@ -34,14 +34,15 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
     [Header("Subsystems")]
     public BossNavigator navigator;
     public DragonFireballCaster fireball;
-    public DragonSnakeMovementStyle dragon;
     public SpatialStrategyMiniGame strategyMiniGame;
-    public BossStatsAndHealth statsAndHealth;
+    public SegmentManager segmentManager; // Using C# Actions exclusively
 
     private ToppleItem currentToppleTarget;
     private bool minionsNeedDefenseFlag = false;
     private float lastAttackTime;
-    private float damageAccumulator = 0f;
+
+    // Evaluated State Bools
+    private bool needsHealingImperative = false;
 
     private Transform player;
 
@@ -54,66 +55,91 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
 
     private void OnEnable()
     {
-        // Subscribe to relevant external events to trigger state evaluation
         VRHeadsetStickyBlindness.OnPlayerBlinded += HandlePlayerBlinded;
-        MessageSystem.AddListener(this, "SegmentDestroyed", string.Empty);
         MessageSystem.AddListener(this, "MinionUnderFire", string.Empty);
+
+        if (segmentManager != null)
+        {
+            segmentManager.OnHealingImperativeReached += HandleHealingImperative;
+            segmentManager.OnFullyHealed += HandleFullyHealed;
+            segmentManager.OnSegmentLost += HandleSegmentLost;
+        }
     }
 
     private void OnDisable()
     {
         VRHeadsetStickyBlindness.OnPlayerBlinded -= HandlePlayerBlinded;
-        MessageSystem.RemoveListener(this, "SegmentDestroyed", string.Empty);
         MessageSystem.RemoveListener(this, "MinionUnderFire", string.Empty);
+
+        if (segmentManager != null)
+        {
+            segmentManager.OnHealingImperativeReached -= HandleHealingImperative;
+            segmentManager.OnFullyHealed -= HandleFullyHealed;
+            segmentManager.OnSegmentLost -= HandleSegmentLost;
+        }
     }
 
     /// <summary>
-    /// Evaluates all possible states based on the current situation and transitions if needed.
-    /// This is called via events (damage taken, crystals destroyed, player blinded) rather than Update.
+    /// Utility Scoring System for determining the Dragon's tactical response.
+    /// Replaces random selection with calculated desire scores.
     /// </summary>
     public void EvaluateState()
     {
-        List<DragonState> validStates = new List<DragonState>();
+        Dictionary<DragonState, float> scores = new Dictionary<DragonState, float>();
 
-        // 1. Check Survival Priorities (highest)
-        if (NeedsHealing() && HasDefendCrystal())
+        // 1. Flee to Heal
+        float healScore = 0f;
+        if (needsHealingImperative && HasDefendCrystal())
         {
-            validStates.Add(DragonState.FleeToHeal);
+            healScore = 100f; // Absolute priority
         }
-
-        // 2. Check Minion Defense (high)
-        if (MinionsNeedDefense())
+        else if (segmentManager != null && segmentManager.BodySegmentCount < segmentManager.numberOfBodySegments && HasDefendCrystal())
         {
-            validStates.Add(DragonState.DefendMinions);
+            // Calculate a smaller desire to heal based on segments lost, but never overriding absolute imperatives
+            float percentLost = 1f - ((float)segmentManager.BodySegmentCount / segmentManager.numberOfBodySegments);
+            healScore = percentLost * 50f;
         }
+        scores[DragonState.FleeToHeal] = healScore;
 
-        // 3. Check Aggressive / Spatial Control Priorities
-        // The Asian Dragon is always moving and evaluating tactical needs rather than using arbitrary radii.
-        if (player != null)
+        // 2. Defend Minions
+        scores[DragonState.DefendMinions] = MinionsNeedDefense() ? 75f : 0f;
+
+        // 3. Attack Player (Baseline)
+        scores[DragonState.AttackPlayer] = (player != null) ? 40f : 0f;
+        scores[DragonState.DenyArea] = (player != null) ? 35f : 0f;
+
+        // 4. Opportunistic Environment (Recipes / Toppling)
+        float toppleScore = 0f;
+        if (player != null && strategyMiniGame != null)
         {
-            // If the player exists, we are always willing to attack or deny area
-            validStates.Add(DragonState.AttackPlayer);
-            validStates.Add(DragonState.DenyArea);
-
-            // If there's a good topple target (recipe or standard), prioritize it
-            if (strategyMiniGame != null && strategyMiniGame.GetStrategicToppleTarget().pillar != null)
+            var targetData = strategyMiniGame.GetStrategicToppleTarget();
+            if (targetData.pillar != null)
             {
-                validStates.Add(DragonState.TopplePillar);
+                // Future expansion: If it's an Oil recipe opportunity, spike to 90f
+                toppleScore = 60f;
+            }
+        }
+        scores[DragonState.TopplePillar] = toppleScore;
+
+        // 5. Roam (Fallback)
+        scores[DragonState.Roam] = 10f;
+
+        // Find the state with the highest score
+        DragonState bestState = DragonState.Roam;
+        float maxScore = -1f;
+
+        foreach (var kvp in scores)
+        {
+            if (kvp.Value > maxScore)
+            {
+                maxScore = kvp.Value;
+                bestState = kvp.Key;
             }
         }
 
-        // 4. Default to Roam if nothing else
-        if (validStates.Count == 0)
+        if (bestState != CurrentState)
         {
-            validStates.Add(DragonState.Roam);
-        }
-
-        // Tie-breaker: Pick a random valid state to simulate "gritting it out"
-        DragonState newState = validStates[Random.Range(0, validStates.Count)];
-
-        if (newState != CurrentState)
-        {
-            TransitionToState(newState);
+            TransitionToState(bestState);
         }
     }
 
@@ -125,7 +151,7 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         switch (newState)
         {
             case DragonState.FleeToHeal:
-                if (navigator != null) navigator.DefendCrystalCommand(); // Use observation spline
+                if (navigator != null) navigator.DefendCrystalCommand();
                 break;
                 
             case DragonState.DefendCrystal:
@@ -140,23 +166,14 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
                 {
                     OnSwoopStart?.Invoke();
                     OnPlayAngryExpression?.Invoke();
-
-                    // We calculate a point "behind" the pillar along the optimal hit direction.
-                    // The dragon flies to this setup point, then swoops *through* the pillar.
-                    // For now, we command the navigator to fly a trajectory through the pillar.
-                    // We aim for a point past the pillar in the hit direction to ensure a strong physical impact.
                     Vector3 swoopTarget = currentToppleTarget.transform.position + (targetData.optimalHitDirection * 15f);
-
                     navigator.Freestyle(swoopTarget);
                 }
                 break;
                 
             case DragonState.DenyArea:
                 Vector3 hazardTarget = strategyMiniGame.GetOptimalHazardCoordinate();
-                if (navigator != null)
-                {
-                    navigator.Freestyle(hazardTarget); // Reposition to get a good angle
-                }
+                if (navigator != null) navigator.Freestyle(hazardTarget);
                 TryFireball(hazardTarget);
                 break;
                 
@@ -166,7 +183,6 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
                 break;
                 
             case DragonState.DefendMinions:
-                // Move towards minion cover points to act as a shield
                 break;
                 
             case DragonState.Roam:
@@ -177,7 +193,6 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
 
     private void Update()
     {
-        // Minimal update logic: just continuous tracking or cooldown management if currently in an active attack state
         if (CurrentState == DragonState.AttackPlayer && player != null)
         {
             TryFireball(player.position);
@@ -189,15 +204,7 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
                 EvaluateState();
                 return;
             }
-
-            // The physical impact is now handled natively by Unity Physics (OnTriggerEnter) on the ToppleItem.
-            // We just use this distance check to know when the "ramming run" is complete so the brain
-            // can move on to its next tactical decision, preventing it from getting stuck in this state.
             float distance = Vector3.Distance(transform.position, currentToppleTarget.transform.position);
-
-            // To prevent a soft-lock if the dragon somehow misses the pillar or gets stuck pathing:
-            // 1. If it gets close enough to have completed the run OR
-            // 2. If it has been stuck in this state for too long (failsafe)
             float reachDist = config != null ? config.toppleReachDistance : 5f;
             if (distance <= reachDist)
             {
@@ -230,54 +237,40 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
 
     public void OnMessage(MessageArgs messageArgs)
     {
-        if (messageArgs.message == "SegmentDestroyed")
-        {
-            OnHealthSegmentLost();
-        }
-        else if (messageArgs.message == "MinionUnderFire")
+        if (messageArgs.message == "MinionUnderFire")
         {
             minionsNeedDefenseFlag = true;
             EvaluateState();
         }
     }
 
-    public void OnHealthSegmentLost()
+    // --- Segment Manager C# Event Hooks ---
+
+    private void HandleHealingImperative()
     {
-        Debug.Log("[DragonBrain] Lost a segment! Retreating and covering retreat!");
-        CommandMinionsToCharge(); // Covering retreat trigger
+        Debug.Log("[DragonBrain] Healing Imperative reached! Dropping everything to survive!");
+        needsHealingImperative = true;
+        CommandMinionsToCharge(); // Cover retreat
         EvaluateState();
     }
 
-    public void AbsorbHit(float amount)
+    private void HandleFullyHealed()
     {
-        if (dragon != null && statsAndHealth != null)
-        {
-            damageAccumulator += amount;
-            statsAndHealth.TakeDamage(amount, ElementTypeOB7.Normal);
-            
-            float hpPerSeg = config != null ? config.healthPerSegment : 10f;
-            if (damageAccumulator >= hpPerSeg && dragon.BodySegmentCount > 3)
-            {
-                damageAccumulator -= hpPerSeg;
-                dragon.ShedOneBodySegment();
-                OnHealthSegmentLost();
-            }
-            EvaluateState();
-        }
+        Debug.Log("[DragonBrain] Fully healed! Back in the fight!");
+        needsHealingImperative = false;
+        EvaluateState();
+    }
+
+    private void HandleSegmentLost()
+    {
+        Debug.Log("[DragonBrain] Segment lost! Re-evaluating tactics.");
+        EvaluateState();
     }
 
     private void CommandMinionsToCharge()
     {
         OnPlayRoar?.Invoke();
         MessageSystem.SendMessage(this, "DragonNeedsSupport", string.Empty);
-    }
-
-    // --- Condition Checks ---
-
-    private bool NeedsHealing()
-    {
-        // Heal if we are below max body segments (have lost a piece)
-        return dragon != null && dragon.BodySegmentCount < 8; // Assuming 8 is max as in original code
     }
 
     private bool HasDefendCrystal()
@@ -288,9 +281,7 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
     private bool MinionsNeedDefense()
     {
         bool val = minionsNeedDefenseFlag;
-        minionsNeedDefenseFlag = false; // reset after checking
+        minionsNeedDefenseFlag = false;
         return val;
     }
-
-    // PlayerInRange was removed in favor of constant tactical evaluation
 }

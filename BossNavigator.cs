@@ -224,14 +224,14 @@ public class BossNavigator : MonoBehaviour, IMessageHandler
 
         if (Vector3.Distance(transform.position, defendCrystal.transform.position) <= defendArrivalRadius)
         {
-            vitals.IsShielding = true;
-            defendCrystal.BeginFeeding(vitals);
+            if (!vitals.IsShielding) { vitals.IsShielding = true; defendCrystal.BeginFeeding(vitals); PixelCrushers.MessageSystem.SendMessage(this, "DragonReachedCrystal", string.Empty); }
+
         }
     }
 
     private void ExitDefend()
     {
-        defending = false;
+        if (defending) { PixelCrushers.MessageSystem.SendMessage(this, "DragonLeftCrystal", string.Empty); } defending = false;
         if (vitals != null) vitals.IsShielding = false;
         if (defendCrystal != null) defendCrystal.StopFeeding();
     }
@@ -544,14 +544,14 @@ public class BossNavigator : MonoBehaviour, IMessageHandler
 
 //        if (Vector3.Distance(transform.position, defendCrystal.transform.position) <= defendArrivalRadius)
 //        {
-//            vitals.IsShielding = true;
-//            defendCrystal.BeginFeeding(vitals);
+//            if (!vitals.IsShielding) { vitals.IsShielding = true; defendCrystal.BeginFeeding(vitals); PixelCrushers.MessageSystem.SendMessage(this, "DragonReachedCrystal", string.Empty); }
+//
 //        }
 //    }
 
 //    private void ExitDefend()
 //    {
-//        defending = false;
+//        if (defending) { PixelCrushers.MessageSystem.SendMessage(this, "DragonLeftCrystal", string.Empty); } defending = false;
 //        if (vitals != null) vitals.IsShielding = false;
 //        if (defendCrystal != null) defendCrystal.StopFeeding();
 //    }
@@ -936,14 +936,14 @@ public class BossNavigator : MonoBehaviour, IMessageHandler
 
 //        if (Vector3.Distance(transform.position, defendCrystal.transform.position) <= defendArrivalRadius)
 //        {
-//            vitals.IsShielding = true;
-//            defendCrystal.BeginFeeding(vitals);
+//            if (!vitals.IsShielding) { vitals.IsShielding = true; defendCrystal.BeginFeeding(vitals); PixelCrushers.MessageSystem.SendMessage(this, "DragonReachedCrystal", string.Empty); }
+//
 //        }
 //    }
 
 //    private void ExitDefend()
 //    {
-//        defending = false;
+//        if (defending) { PixelCrushers.MessageSystem.SendMessage(this, "DragonLeftCrystal", string.Empty); } defending = false;
 //        if (vitals != null) vitals.IsShielding = false;
 //        if (defendCrystal != null) defendCrystal.StopFeeding();
 //    }
