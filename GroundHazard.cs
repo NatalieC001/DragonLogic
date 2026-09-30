@@ -7,7 +7,7 @@ using System.Collections.Generic;
 /// The prefab should have a trigger Collider (e.g., SphereCollider) and optionally a particle system.
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class GroundHazard : MonoBehaviour
+public class GroundHazard : MonoBehaviour, IArrowTarget
 {
     [Tooltip("Damage per second applied to anything tagged 'Player' (or with PlayerHealth component).")]
     public float damagePerSecond = 10f;
@@ -22,6 +22,9 @@ public class GroundHazard : MonoBehaviour
     {
         triggerCollider = GetComponent<Collider>();
         triggerCollider.isTrigger = true;
+
+        // Ensure this is on the Enemy layer or a layer the arrow can hit
+        gameObject.layer = LayerMask.NameToLayer("Enemy");
     }
 
     private void Start()
@@ -34,6 +37,38 @@ public class GroundHazard : MonoBehaviour
     {
         StartCoroutine(Lifetime());
         StartCoroutine(DamageTick());
+    }
+
+    [Header("Dispel Mechanic")]
+    [Tooltip("Amount of damage required to clear this hazard. A full power shot outside the hazard should equal this.")]
+    public float dispelHealth = 100f;
+
+    // --- STUB: Dispel Mechanic ---
+    // Game Designers: The player can sacrifice time to draw a full-power shot.
+    // That time gives the Dragon an opportunity to stage characters or attack.
+    // If the player is inside the hazard, their shot damage is halved (via sticky blindness),
+    // meaning they will have to shoot the tile twice to accumulate enough damage to dispel it.
+    public void OnArrowHit(float damage, Vector3 impactPoint, ElementTypeOB7 elementType)
+    {
+        dispelHealth -= damage;
+        Debug.Log($"[GroundHazard] Arrow hit dark fire. Took {damage} damage. Remaining: {dispelHealth}");
+
+        if (dispelHealth <= 0)
+        {
+            Debug.Log($"<color=cyan>[GroundHazard] Dark fire dispelled!</color>");
+            Dispel();
+        }
+    }
+
+    private void Dispel()
+    {
+        // Visuals can be added here (e.g., a burst of purifying light)
+
+        // Unregister from the spatial mini game so it knows the tile is safe again
+        // (Note: The current SpatialStrategyMiniGame activeHazardZones list would need a RemoveHazardZone method
+        // if it needs immediate updates, though right now it just tracks spots permanently for the duration).
+
+        Destroy(gameObject);
     }
 
     private IEnumerator Lifetime()

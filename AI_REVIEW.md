@@ -72,3 +72,14 @@ I reviewed the architecture overview you provided and attempted to break it. I f
 ### Risk 3: Minion Defense Always Returned False (Fixed)
 **The Problem:** The `DragonBrain.MinionsNeedDefense()` method was hardcoded to `return false;`. The dragon would never enter the `DefendMinions` state.
 **The Fix:** I decoupled this system entirely using `PixelCrushers.MessageSystem`. Now, when a `StandardCreature` minion takes damage, it broadcasts `MinionUnderFire`. The `DragonBrain` listens for this message and evaluates its state to see if it should transition into `DefendMinions`, keeping the architecture purely event-driven and separated.
+
+### Risk-Reward Mechanic: Dispelling Dark Fire (Game Designer Note)
+The `GroundHazard.cs` (Dark Fire) script has been updated to implement the `IArrowTarget` interface. Players can now shoot the dark fire tiles to "dispel" or "unenchant" them, returning the ground to normal.
+
+**The Strategy Stub:**
+This mechanic revolves around a **Full Power Shot** (which takes ~1 second to fully draw back on the VR bow).
+- **The Risk:** In the second it takes to draw the bow, the player sacrifices an attack opportunity. The Dragon can use this time to advance, command minions, topple a pillar, or launch a fireball.
+- **The Code Implementation:** The hazard tile now has a `dispelHealth` pool (e.g., 100). The mechanic is cumulative:
+  - If the player is standing **outside** the hazard, their full-power shot does 100 damage, clearing the tile in **1 hit**.
+  - If the player is standing **inside** the hazard, their shots are weakened by the `StickyBlindness` debuff (dealing 50 damage), meaning they must shoot the tile **2 times** to clear it.
+- **Next Steps for Weapons Engineer:** When updating the Bow/Arrow scripts, ensure a fully drawn bow deals exactly enough base damage to clear a tile in one shot, and that the `VRHeadsetStickyBlindness` script halves arrow damage when active. This same fully-charged requirement should be mapped to the puzzle levers.
