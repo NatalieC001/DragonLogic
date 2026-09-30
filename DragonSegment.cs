@@ -1,4 +1,5 @@
 using UnityEngine;
+using PixelCrushers;
 using Dreamteck.Splines;
 
 /// <summary>
@@ -152,6 +153,8 @@ public class DragonSegment : MonoBehaviour, IArrowTarget
         {
             dragonManager.OnSegmentDestroyed(this);
         }
+
+        MessageSystem.SendMessage(this, "SegmentDestroyed", string.Empty, SegmentIndex);
 
         Destroy(gameObject);
     }
@@ -410,7 +413,7 @@ public class DragonSegment : MonoBehaviour, IArrowTarget
 //    /// Called by the SegmentedDragonManager when the entire boss is defeated.
 //    /// Forces permanent pieces (Head, Legs, Tail) to finally dissolve.
 //    /// </summary>
-//    public virtual void TriggerTotalDeath()  
+//    public virtual void TriggerTotalDeath()
 //    {
 //        if (segmentCollider != null)
 //        {
@@ -586,7 +589,7 @@ public class DragonSegment : MonoBehaviour, IArrowTarget
 //        }
 
 //        // Explicitly command the segment's visual effect to start dissolving!
-//        // This will eventually fire the OnDissolveCompleted event we subscribed to in Start, 
+//        // This will eventually fire the OnDissolveCompleted event we subscribed to in Start,
 //        // which will trigger FinalizeDestruction().
 //        DissolveEffect dissolve = GetComponentInChildren<DissolveEffect>();
 //        if (dissolve != null)

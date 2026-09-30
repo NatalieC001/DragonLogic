@@ -37,8 +37,7 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
     public float toppleReachDistance = 5f;
     private ToppleItem currentToppleTarget;
 
-    [Header("Minion Defense")]
-    private MinionManager minionManager;
+    private bool minionsNeedDefenseFlag = false;
 
     [Header("Combat")]
     public float attackCooldown = 2f;
@@ -54,45 +53,21 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         player = GameObject.FindGameObjectWithTag("Player")?.transform;
         Debug.Assert(player != null, "[DragonBrain] No GameObject tagged 'Player' found.");
         Debug.Assert(strategyMiniGame != null, "[DragonBrain] StrategyMiniGame reference required.");
-        minionManager = FindFirstObjectByType<MinionManager>();
     }
 
     private void OnEnable()
     {
         // Subscribe to relevant external events to trigger state evaluation
         VRHeadsetStickyBlindness.OnPlayerBlinded += HandlePlayerBlinded;
-        if (dragon != null) {
-            dragon.OnSegmentShed += HandleSegmentShed;
-        }
+        MessageSystem.AddListener(this, "SegmentDestroyed", string.Empty);
+        MessageSystem.AddListener(this, "MinionUnderFire", string.Empty);
     }
 
     private void OnDisable()
     {
         VRHeadsetStickyBlindness.OnPlayerBlinded -= HandlePlayerBlinded;
-        if (dragon != null) {
-            dragon.OnSegmentShed -= HandleSegmentShed;
-        }
-    }
-
-    private void HandleSegmentShed()
-    {
-        OnHealthSegmentLost();
-    }
-
-    public void OnMessage(MessageArgs messageArgs)
-    {
-        if (messageArgs.message == "PlayerShootsBoss")
-        {
-            if (messageArgs.values == null || messageArgs.values.Length == 0) return;
-            float amount = (float)messageArgs.values[0];
-            damageAccumulator += amount;
-            if (damageAccumulator >= healthPerSegment && dragon != null && dragon.BodySegmentCount > 3)
-            {
-                damageAccumulator -= healthPerSegment;
-                dragon.ShedOneBodySegment();
-            }
-            EvaluateState();
-        }
+        MessageSystem.RemoveListener(this, "SegmentDestroyed", string.Empty);
+        MessageSystem.RemoveListener(this, "MinionUnderFire", string.Empty);
     }
 
     /// <summary>
@@ -212,9 +187,8 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
             float distance = Vector3.Distance(transform.position, currentToppleTarget.transform.position);
             if (distance <= toppleReachDistance)
             {
-                Debug.Log($"[DragonBrain] Reached pillar {currentToppleTarget.name}, toppling!");
-                Vector3 attackDir = (currentToppleTarget.transform.position - transform.position).normalized;
-                currentToppleTarget.Topple(attackDir);
+                Debug.Log($"[DragonBrain] Reached pillar {currentToppleTarget.name}, telling it to topple!");
+                MessageSystem.SendMessage(this, "DragonReachedPillar", string.Empty, currentToppleTarget);
                 currentToppleTarget = null;
                 EvaluateState();
             }
@@ -237,6 +211,19 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         Debug.Log("[DragonBrain] Player is Blinded! Triggering Minion Charge (Blind Spot)!");
         CommandMinionsToCharge();
         EvaluateState();
+    }
+
+    public void OnMessage(MessageArgs messageArgs)
+    {
+        if (messageArgs.message == "SegmentDestroyed")
+        {
+            OnHealthSegmentLost();
+        }
+        else if (messageArgs.message == "MinionUnderFire")
+        {
+            minionsNeedDefenseFlag = true;
+            EvaluateState();
+        }
     }
 
     public void OnHealthSegmentLost()
@@ -265,11 +252,7 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
 
     private void CommandMinionsToCharge()
     {
-        CoverPoint[] covers = FindObjectsByType<CoverPoint>(FindObjectsSortMode.None);
-        foreach (var cover in covers)
-        {
-            cover.TriggerCharge();
-        }
+        MessageSystem.SendMessage(this, "DragonNeedsSupport", string.Empty);
     }
 
     // --- Condition Checks ---
@@ -287,7 +270,9 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
 
     private bool MinionsNeedDefense()
     {
-        return minionManager != null && minionManager.HasActiveMinions();
+        bool val = minionsNeedDefenseFlag;
+        minionsNeedDefenseFlag = false; // reset after checking
+        return val;
     }
 
     private bool PlayerInRange(float radius)

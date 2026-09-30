@@ -1,4 +1,5 @@
 using UnityEngine;
+using PixelCrushers;
 
 /// <summary>
 /// A foundation script to identify standard creatures in the game.
@@ -119,6 +120,8 @@ public class StandardCreature : MonoBehaviour, IArrowTarget
         }
 
         health -= actualDamage;
+
+        MessageSystem.SendMessage(this, "MinionUnderFire", string.Empty, this);
 
         Debug.Log($"[StandardCreature] {gameObject.name} hit by {arrowType} arrow. Took {actualDamage} damage. Health remaining: {health}");
 
