@@ -1,9 +1,10 @@
 using UnityEngine;
+using PixelCrushers;
 
 /// <summary>
 /// Attached to destructible/interactive environmental structures (pillars, scaffolding, walls).
 /// </summary>
-public class ToppleItem : MonoBehaviour
+public class ToppleItem : MonoBehaviour, IMessageHandler
 {
     public bool IsToppled { get; private set; } = false;
     
@@ -14,6 +15,30 @@ public class ToppleItem : MonoBehaviour
     /// <summary>
     /// Triggered by the Dragon when it attacks this object.
     /// </summary>
+    private void OnEnable()
+    {
+        MessageSystem.AddListener(this, "DragonReachedPillar", string.Empty);
+    }
+
+    private void OnDisable()
+    {
+        MessageSystem.RemoveListener(this, "DragonReachedPillar", string.Empty);
+    }
+
+    public void OnMessage(MessageArgs messageArgs)
+    {
+        if (messageArgs.message == "DragonReachedPillar")
+        {
+            // Only topple if THIS pillar was the intended target.
+            if (messageArgs.values != null && messageArgs.values.Length > 0 && messageArgs.values[0] as ToppleItem == this)
+            {
+                Transform dragonTransform = ((Component)messageArgs.sender).transform;
+                Vector3 attackDir = (transform.position - dragonTransform.position).normalized;
+                Topple(attackDir);
+            }
+        }
+    }
+
     public void Topple(Vector3 attackDirection)
     {
         if (IsToppled) return;

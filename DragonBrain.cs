@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using PixelCrushers;
 
 /// <summary>
 /// Pillar C - Event-Driven Tactician
@@ -17,7 +18,7 @@ public enum DragonState
     Roam
 }
 
-public class DragonBrain : MonoBehaviour
+public class DragonBrain : MonoBehaviour, IMessageHandler
 {
     public DragonState CurrentState { get; private set; } = DragonState.Roam;
 
@@ -31,6 +32,12 @@ public class DragonBrain : MonoBehaviour
     [Header("Senses")]
     public float aggroRadius = 15f;
     public float attackRadius = 12f;
+
+    [Header("Topple Targeting")]
+    public float toppleReachDistance = 5f;
+    private ToppleItem currentToppleTarget;
+
+    private bool minionsNeedDefenseFlag = false;
 
     [Header("Combat")]
     public float attackCooldown = 2f;
@@ -52,11 +59,15 @@ public class DragonBrain : MonoBehaviour
     {
         // Subscribe to relevant external events to trigger state evaluation
         VRHeadsetStickyBlindness.OnPlayerBlinded += HandlePlayerBlinded;
+        MessageSystem.AddListener(this, "SegmentDestroyed", string.Empty);
+        MessageSystem.AddListener(this, "MinionUnderFire", string.Empty);
     }
 
     private void OnDisable()
     {
         VRHeadsetStickyBlindness.OnPlayerBlinded -= HandlePlayerBlinded;
+        MessageSystem.RemoveListener(this, "SegmentDestroyed", string.Empty);
+        MessageSystem.RemoveListener(this, "MinionUnderFire", string.Empty);
     }
 
     /// <summary>
@@ -126,11 +137,11 @@ public class DragonBrain : MonoBehaviour
                 break;
                 
             case DragonState.TopplePillar:
-                ToppleItem target = strategyMiniGame.GetOptimalToppleTarget();
-                if (target != null && navigator != null)
+                currentToppleTarget = strategyMiniGame.GetOptimalToppleTarget();
+                if (currentToppleTarget != null && navigator != null)
                 {
                     // Interrupt current path and fly directly to the pillar to knock it over
-                    navigator.Freestyle(target.transform.position); 
+                    navigator.Freestyle(currentToppleTarget.transform.position);
                 }
                 break;
                 
@@ -165,6 +176,23 @@ public class DragonBrain : MonoBehaviour
         {
             TryFireball(player.position);
         }
+        else if (CurrentState == DragonState.TopplePillar)
+        {
+            if (currentToppleTarget == null || currentToppleTarget.IsToppled)
+            {
+                EvaluateState();
+                return;
+            }
+
+            float distance = Vector3.Distance(transform.position, currentToppleTarget.transform.position);
+            if (distance <= toppleReachDistance)
+            {
+                Debug.Log($"[DragonBrain] Reached pillar {currentToppleTarget.name}, telling it to topple!");
+                MessageSystem.SendMessage(this, "DragonReachedPillar", string.Empty, currentToppleTarget);
+                currentToppleTarget = null;
+                EvaluateState();
+            }
+        }
     }
 
     private void TryFireball(Vector3 targetPosition)
@@ -183,6 +211,19 @@ public class DragonBrain : MonoBehaviour
         Debug.Log("[DragonBrain] Player is Blinded! Triggering Minion Charge (Blind Spot)!");
         CommandMinionsToCharge();
         EvaluateState();
+    }
+
+    public void OnMessage(MessageArgs messageArgs)
+    {
+        if (messageArgs.message == "SegmentDestroyed")
+        {
+            OnHealthSegmentLost();
+        }
+        else if (messageArgs.message == "MinionUnderFire")
+        {
+            minionsNeedDefenseFlag = true;
+            EvaluateState();
+        }
     }
 
     public void OnHealthSegmentLost()
@@ -211,11 +252,7 @@ public class DragonBrain : MonoBehaviour
 
     private void CommandMinionsToCharge()
     {
-        CoverPoint[] covers = FindObjectsByType<CoverPoint>(FindObjectsSortMode.None);
-        foreach (var cover in covers)
-        {
-            cover.TriggerCharge();
-        }
+        MessageSystem.SendMessage(this, "DragonNeedsSupport", string.Empty);
     }
 
     // --- Condition Checks ---
@@ -233,7 +270,9 @@ public class DragonBrain : MonoBehaviour
 
     private bool MinionsNeedDefense()
     {
-        return false;
+        bool val = minionsNeedDefenseFlag;
+        minionsNeedDefenseFlag = false; // reset after checking
+        return val;
     }
 
     private bool PlayerInRange(float radius)
