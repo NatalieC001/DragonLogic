@@ -1,8 +1,8 @@
 // ==========================================
 // ATTACHMENT INSTRUCTIONS:
-// DO NOT attach this directly as a component!
-// This is an Interface.
-// Your Enemy Health scripts should implement this interface
+// DO NOT attach this directly as a component! 
+// This is an Interface. 
+// Your Enemy Health scripts should implement this interface 
 // like this: public class EnemyHealth : MonoBehaviour, IArrowTarget
 // ==========================================
 
