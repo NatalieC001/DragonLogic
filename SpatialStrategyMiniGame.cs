@@ -138,6 +138,7 @@ public class SpatialStrategyMiniGame : MonoBehaviour
     {
         public ToppleItem pillar;
         public Vector3 optimalHitDirection;
+        public bool isRecipeOpportunity;
     }
 
     /// <summary>
@@ -147,7 +148,16 @@ public class SpatialStrategyMiniGame : MonoBehaviour
     /// </summary>
     public ToppleTargetData GetStrategicToppleTarget()
     {
-        ToppleTargetData result = new ToppleTargetData { pillar = null, optimalHitDirection = Vector3.forward };
+        ToppleTargetData result = new ToppleTargetData { pillar = null, optimalHitDirection = Vector3.forward, isRecipeOpportunity = false };
+
+        // --- STUB: Recipe Opportunity Check ---
+        // Before falling back to standard player-blocking topples, check if we can create an advantageous recipe.
+        // Example logic:
+        // 1. Check activeHazardZones for existing Fire hazards.
+        // 2. Iterate availableToppleItems for barrels where `spillType == HazardType.Oil`.
+        // 3. If an Oil barrel can be toppled into a Fire hazard, return that barrel and the trajectory to hit the Fire.
+        // result.isRecipeOpportunity = true;
+        // --------------------------------------
 
         ToppleItem optimalPillar = GetOptimalToppleTarget();
         if (optimalPillar == null) return result;

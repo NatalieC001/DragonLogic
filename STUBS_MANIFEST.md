@@ -39,3 +39,21 @@ Your mandate in the next session is to **complete these stubs to production-leve
 **What needs to be finalized:**
 - **Animation:** The dragon is just moving through the air. An aggressive "Ramming" or "Swooping" animation state should be triggered during this flight path.
 - **Pathing Smoothing:** The 15-meter overshoot is a hardcoded float (`15f`). This might need to be exposed as a variable or tuned based on the size of the arena to ensure the dragon doesn't clip through arena walls after the ram.
+
+
+### 6. ToppleItem.cs: Elemental Spills & Recipe Creation
+**Location:** `ToppleItem.SpillContents`
+**What it is:** Topple items are no longer just stone pillars; they can be barrels of Oil, Water, or Sticky substances. When toppled, they generate an area-of-effect hazard.
+**What needs to be finalized:**
+- **Spatial Coverage:** The physical barrel itself becomes an obstacle on the floor tiles. The spill must be instantiated to extend ~2 tiles *in the direction of the fall*.
+- **Recipe/Nullification Logic:** Implement physics overlap checks when the spill is generated.
+  - If a Water spill hits a Fire hazard, it should nullify the fire.
+  - If an Oil spill hits a Fire hazard (or is later hit by a fireball), it should ignite.
+- **AI Intelligence:** The Dragon's SpatialStrategy will be updated to intentionally target these synergies (e.g. knocking an oil barrel specifically toward a burning tile).
+
+
+### 7. SpatialStrategyMiniGame.cs: Recipe Opportunity Logic
+**Location:** `SpatialStrategyMiniGame.GetStrategicToppleTarget`
+**What it is:** The MiniGame calculates the best barrel/pillar to knock over. Currently, it just picks the one that optimally blocks the player.
+**What needs to be finalized:**
+- **Recipe Intelligence:** The method contains a stub block. It should be updated to first check if any `availableToppleItems` containing `spillType == Oil` can be toppled into an existing Fire hazard from `activeHazardZones`. If so, it should override the standard logic, returning that barrel and the trajectory needed to knock the oil into the fire, setting `isRecipeOpportunity = true`.

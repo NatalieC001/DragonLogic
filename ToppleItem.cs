@@ -10,6 +10,13 @@ public class ToppleItem : MonoBehaviour
     public float toppleForce = 15f;
     public Vector3 toppleDirectionOverride = Vector3.zero;
 
+    [Header("Elemental Spills")]
+    [Tooltip("If true, this object acts like a barrel (Oil, Water, Sticky) and spills its contents upon toppling.")]
+    public bool spillsContents = false;
+    public HazardType spillType = HazardType.Water;
+    [Tooltip("The GroundHazard prefab to instantiate for the spill.")]
+    public GameObject spillPrefab;
+
     private void Awake()
     {
         // Enforce physics variables in code to prevent manual inspector errors
@@ -79,5 +86,30 @@ public class ToppleItem : MonoBehaviour
         {
             strategy.RemoveToppleItem(this);
         }
+
+        if (spillsContents)
+        {
+            SpillContents(pushDir.normalized);
+        }
+    }
+
+    /// <summary>
+    /// STUB: Handles generating elemental surface hazards when a barrel topples.
+    /// </summary>
+    private void SpillContents(Vector3 fallDirection)
+    {
+        Debug.Log($"<color=cyan>[ToppleItem] Barrel toppled! Spilling {spillType} in direction {fallDirection}</color>");
+
+        // STUB: Particle/Hazard Instantiation Logic
+        // Gameplay Engineers:
+        // 1. Calculate the spatial footprint. The physical barrel acts as a hard obstacle blocking the tiles it lands on.
+        // 2. The spill should extend ~2 tiles BEYOND the barrel in the fallDirection.
+        // 3. Instantiate the `spillPrefab` at those extended coordinates, setting its HazardType to `spillType`.
+
+        // STUB: Recipe Creation & Hazard Nullification
+        // - If the spill lands on an existing hazard, evaluate it.
+        // - E.g. Water spill landing on Fire = Nullifies both (creates steam cloud).
+        // - E.g. Oil spill landing on Fire = Ignites the oil, creating a massive Fire area.
+        // - The Dragon Brain will eventually be smart enough to intentionally topple Oil onto existing Fire.
     }
 }

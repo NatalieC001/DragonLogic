@@ -12,7 +12,9 @@ public enum HazardType
     Electricity,
     Fire,
     Sticky,
-    Ice
+    Ice,
+    Water,
+    Oil
 }
 
 [RequireComponent(typeof(Collider))]
