@@ -7,6 +7,16 @@ using System.Collections.Generic;
 /// The prefab should have a trigger Collider (e.g., SphereCollider) and optionally a particle system.
 /// </summary>
 [RequireComponent(typeof(Collider))]
+public enum HazardType
+{
+    DarkMist,
+    Electricity,
+    Fire,
+    Sticky,
+    Ice
+}
+
+[RequireComponent(typeof(Collider))]
 public class GroundHazard : MonoBehaviour, IArrowTarget
 {
     [Tooltip("Damage per second applied to anything tagged 'Player' (or with PlayerHealth component).")]
@@ -14,6 +24,9 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
 
     [Tooltip("Total duration before the hazard is destroyed.")]
     public float duration = 12f;
+
+    [Header("Hazard Configuration")]
+    public HazardType hazardType = HazardType.DarkMist;
 
     private Collider triggerCollider;
     private readonly HashSet<GameObject> playersInside = new HashSet<GameObject>();
@@ -91,6 +104,14 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
                 {
                     if (go == null) continue;
 
+                    // --- STUB: Elemental Hazard Logic ---
+                    // Future implementation: Check hazardType here.
+                    // If Sticky: Apply a 3x Bow Draw Speed reduction via SendMessage.
+                    // If Electricity: Check if standing on a "Conductive Metal Sheet" tag and double damage.
+                    // If Fire: Apply a DoT burn debuff.
+                    // If Ice: Reduce player movement speed.
+                    // If DarkMist: (Existing logic) Applies StickyBlindness.
+
                     // Prefer a direct PlayerHealth component if present, but call via SendMessage
                     // to be tolerant of different PlayerHealth implementations/signatures.
                     var ph = go.GetComponentInParent<PlayerHealth>();
@@ -99,11 +120,22 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
                         // Use SendMessage on the component's GameObject to avoid static typing mismatches
                         // (handles projects where PlayerHealth may differ).
                         ph.gameObject.SendMessage("TakeDamage", damageThisTick, SendMessageOptions.DontRequireReceiver);
+
+                        // Example hook for the future Sticky effect:
+                        if (hazardType == HazardType.Sticky)
+                        {
+                            ph.gameObject.SendMessage("ApplyStickyDebuff", SendMessageOptions.DontRequireReceiver);
+                        }
                     }
                     else
                     {
                         // Fallback: try SendMessage on the collider game object
                         go.SendMessage("TakeDamage", damageThisTick, SendMessageOptions.DontRequireReceiver);
+
+                        if (hazardType == HazardType.Sticky)
+                        {
+                            go.SendMessage("ApplyStickyDebuff", SendMessageOptions.DontRequireReceiver);
+                        }
                     }
                 }
             }
@@ -124,6 +156,13 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
         if (other.gameObject.CompareTag("Player"))
         {
             playersInside.Remove(other.gameObject);
+
+            // --- STUB: Remove Hazard Debuffs ---
+            // If the player steps out of a Sticky hazard, restore bow draw speed.
+            if (hazardType == HazardType.Sticky)
+            {
+                other.gameObject.SendMessage("RemoveStickyDebuff", SendMessageOptions.DontRequireReceiver);
+            }
         }
     }
 }

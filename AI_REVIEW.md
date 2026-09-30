@@ -83,3 +83,16 @@ This mechanic revolves around a **Full Power Shot** (which takes ~1 second to fu
   - If the player is standing **outside** the hazard, their full-power shot does 100 damage, clearing the tile in **1 hit**.
   - If the player is standing **inside** the hazard, their shots are weakened by the `StickyBlindness` debuff (dealing 50 damage), meaning they must shoot the tile **2 times** to clear it.
 - **Next Steps for Weapons Engineer:** When updating the Bow/Arrow scripts, ensure a fully drawn bow deals exactly enough base damage to clear a tile in one shot, and that the `VRHeadsetStickyBlindness` script halves arrow damage when active. This same fully-charged requirement should be mapped to the puzzle levers.
+
+### Future Territory Control Expansion (Game Designer Note)
+The Dragon's spatial control arsenal is being expanded to utilize different elemental hazards that synergize with the environment. `GroundHazard.cs` has been updated with a `HazardType` enum to support these new variations.
+
+**Planned Hazard Variations:**
+- **Dark Mist (Current):** Blinds the player and weakens arrows.
+- **Sticky Substance:** Coats the player and the bow, increasing the bow draw speed 3x.
+- **Fire:** Ignites the ground, preventing safe passage and applying a burning DoT.
+- **Ice:** Creates slippery or slowing terrain.
+- **Electricity:** Electrifies the ground. This will synergize with environmental properties; for example, if an electric hazard is placed on a "Conductive Metal Sheet," its effective area and damage may drastically increase (or synergize with water puddles).
+
+**Player Counter-Play:**
+In addition to the "Dispel" mechanic (shooting the hazard directly to clear it), a future strategy involves allowing the player to cast temporary "Enchantments" on specific small areas of the plane. This would immunize that patch of ground from being captured or corrupted by the Dragon's hazards for a short time, giving the player a safe foothold to maneuver and fight back.
