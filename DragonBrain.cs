@@ -46,6 +46,8 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
 
     private Transform player;
 
+    public Dictionary<DragonState, float> LastEvaluatedScores { get; private set; } = new Dictionary<DragonState, float>();
+
     private void Start()
     {
         player = GameObject.FindGameObjectWithTag("Player")?.transform;
@@ -136,6 +138,8 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
                 bestState = kvp.Key;
             }
         }
+
+        LastEvaluatedScores = scores;
 
         if (bestState != CurrentState)
         {

@@ -22,21 +22,17 @@ This codebase relies on two primary message systems to decouple components:
 **Core Logic & Utility Scoring (Desire Table):**
 The `DragonBrain` evaluates tactical priorities dynamically on a continuous, frame-by-frame basis, allowing it to break away from paths mid-travel based on real-time priorities. This system calculates "desire scores" across three core behavioral pillars: Defend Self, Execute Grid Strategy, and Direct Minions.
 
-*Conceptual Live Desire Table:*
-```text
-▼ LIVE DESIRE TABLE (Read Only Concept)
-[■■■■■■■■□□] 0.82 - Defend Self (Crystal/Health)
-[■■■■■■■■■■] 0.95 - Execute Grid Strategy (Deny Area/Topple)
-[■■■■■■□□□□] 0.40 - Direct Minions (Defend/Command)
-```
+*Live Desire Table (Custom Editor Visualization):*
+We have implemented a custom Unity Editor script (`Editor/DragonBrainEditor.cs`) that visualizes these exact values dynamically in the Inspector during Play Mode, updating constantly. It sorts by the highest score, illustrating the AI's internal logic.
 
 | State (`CurrentState`) | Personality Pillar | Condition / Influences | Desire Score |
 | :--- | :--- | :--- | :--- |
-| `FleeToHeal` / `DefendCrystal` | **Defend Self** | **Absolute Priority:** Triggers immediately if `OnHealingImperativeReached` fires (critical segments lost). The Dragon breaks its current path to route directly to a crystal's observation spline to regenerate. | `100f` |
-| `DefendMinions`| **Direct Minions** | Triggers when the `"MinionUnderFire"` message is intercepted or player is blinded. The Dragon actively moves to shield or command its vulnerable minion waves. | `75f` |
-| `TopplePillar` | **Execute Grid Strategy** | Identifies a `ToppleItem` closest to the player's predicted movement line to slice away walkable area and close up safe boundaries. | `60f` |
-| `DenyArea` | **Execute Grid Strategy** | **Baseline Strategic Aggression:** Evaluates open plane space to drop hazards (fire fields) ahead of the player's vector, constricting safe ground and applying debuffs (weakness/blindness). | `35f` to `95f` |
-| `AttackPlayer` | **Baseline** | Standard physical or projectile engagement if grid strategy is on cooldown. | `40f` |
+| `FleeToHeal` | **Defend Self** | **Absolute Priority:** Triggers immediately if `OnHealingImperativeReached` fires (critical segments lost). Scales between 0 and 50 based on missing segments, or spikes to `100f` if absolute retreat is needed. | `0f` to `100f` |
+| `DefendCrystal` | **Defend Self** | Commands the Dragon to route directly to a crystal's observation spline to regenerate. | Active during Heal |
+| `DefendMinions`| **Direct Minions** | Triggers when the `"MinionUnderFire"` message is intercepted or player is blinded. The Dragon actively moves to shield or command its vulnerable minion waves. | `75f` or `0f` |
+| `TopplePillar` | **Execute Grid Strategy** | Identifies a `ToppleItem` closest to the player's predicted movement line to slice away walkable area and close up safe boundaries. | `60f` or `0f` |
+| `DenyArea` | **Execute Grid Strategy** | **Baseline Strategic Aggression:** Evaluates open plane space to drop hazards (fire fields) ahead of the player's vector, constricting safe ground and applying debuffs. | `35f` or `0f` |
+| `AttackPlayer` | **Baseline** | Standard physical or projectile engagement if grid strategy is on cooldown. Active if the player is alive/found. | `40f` or `0f` |
 | `Roam`         | **Fallback** | Default evaluation state. | `10f` |
 
 **The Tactical Feedback Loop (Player Counter-Play):**
