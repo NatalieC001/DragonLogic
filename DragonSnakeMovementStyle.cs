@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using Dreamteck.Splines;
 using System.Collections.Generic;
+using System;
 
 /// <summary>
 /// Controls the multi-part Asian Fire Dragon boss visuals.
@@ -41,6 +42,9 @@ public class DragonSnakeMovementStyle : MonoBehaviour
 
     [Tooltip("Maximum samples per second recorded. Higher = smoother, more memory.")]
     public int samplesPerSecond = 60;
+
+
+    public event Action OnSegmentShed;
 
     private List<DragonSegment> activeSegments = new List<DragonSegment>();
     private SplineComputer bossSpline;
@@ -285,6 +289,8 @@ public class DragonSnakeMovementStyle : MonoBehaviour
 
         isClosingGap = true;
         gapCloseTimer = 0f;
+
+        OnSegmentShed?.Invoke();
     }
 
     public void ShedOneBodySegment()
@@ -385,6 +391,7 @@ public class DragonSnakeMovementStyle : MonoBehaviour
 //using UnityEngine;  //still not great , but at least it compiles now
 //using Dreamteck.Splines;
 //using System.Collections.Generic;
+using System;
 
 ///// <summary>
 ///// Controls the multi-part Asian Fire Dragon boss.
@@ -420,6 +427,8 @@ public class DragonSnakeMovementStyle : MonoBehaviour
 
 //    [Tooltip("Maximum samples per second recorded. Higher = smoother, more memory.")]
 //    public int samplesPerSecond = 60;
+
+
 
 //    private List<DragonSegment> activeSegments = new List<DragonSegment>();
 //    private SplineComputer bossSpline;
@@ -689,6 +698,7 @@ public class DragonSnakeMovementStyle : MonoBehaviour
 //using UnityEngine;
 //using Dreamteck.Splines;
 //using System.Collections.Generic;
+using System;
 
 ///// <summary>
 ///// Controls the multi-part Asian Fire Dragon boss.

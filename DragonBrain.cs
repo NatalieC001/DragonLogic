@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using PixelCrushers;
 
 /// <summary>
 /// Pillar C - Event-Driven Tactician
@@ -17,7 +18,7 @@ public enum DragonState
     Roam
 }
 
-public class DragonBrain : MonoBehaviour
+public class DragonBrain : MonoBehaviour, IMessageHandler
 {
     public DragonState CurrentState { get; private set; } = DragonState.Roam;
 
@@ -31,6 +32,13 @@ public class DragonBrain : MonoBehaviour
     [Header("Senses")]
     public float aggroRadius = 15f;
     public float attackRadius = 12f;
+
+    [Header("Topple Targeting")]
+    public float toppleReachDistance = 5f;
+    private ToppleItem currentToppleTarget;
+
+    [Header("Minion Defense")]
+    private MinionManager minionManager;
 
     [Header("Combat")]
     public float attackCooldown = 2f;
@@ -46,17 +54,45 @@ public class DragonBrain : MonoBehaviour
         player = GameObject.FindGameObjectWithTag("Player")?.transform;
         Debug.Assert(player != null, "[DragonBrain] No GameObject tagged 'Player' found.");
         Debug.Assert(strategyMiniGame != null, "[DragonBrain] StrategyMiniGame reference required.");
+        minionManager = FindFirstObjectByType<MinionManager>();
     }
 
     private void OnEnable()
     {
         // Subscribe to relevant external events to trigger state evaluation
         VRHeadsetStickyBlindness.OnPlayerBlinded += HandlePlayerBlinded;
+        if (dragon != null) {
+            dragon.OnSegmentShed += HandleSegmentShed;
+        }
     }
 
     private void OnDisable()
     {
         VRHeadsetStickyBlindness.OnPlayerBlinded -= HandlePlayerBlinded;
+        if (dragon != null) {
+            dragon.OnSegmentShed -= HandleSegmentShed;
+        }
+    }
+
+    private void HandleSegmentShed()
+    {
+        OnHealthSegmentLost();
+    }
+
+    public void OnMessage(MessageArgs messageArgs)
+    {
+        if (messageArgs.message == "PlayerShootsBoss")
+        {
+            if (messageArgs.values == null || messageArgs.values.Length == 0) return;
+            float amount = (float)messageArgs.values[0];
+            damageAccumulator += amount;
+            if (damageAccumulator >= healthPerSegment && dragon != null && dragon.BodySegmentCount > 3)
+            {
+                damageAccumulator -= healthPerSegment;
+                dragon.ShedOneBodySegment();
+            }
+            EvaluateState();
+        }
     }
 
     /// <summary>
@@ -126,11 +162,11 @@ public class DragonBrain : MonoBehaviour
                 break;
                 
             case DragonState.TopplePillar:
-                ToppleItem target = strategyMiniGame.GetOptimalToppleTarget();
-                if (target != null && navigator != null)
+                currentToppleTarget = strategyMiniGame.GetOptimalToppleTarget();
+                if (currentToppleTarget != null && navigator != null)
                 {
                     // Interrupt current path and fly directly to the pillar to knock it over
-                    navigator.Freestyle(target.transform.position); 
+                    navigator.Freestyle(currentToppleTarget.transform.position);
                 }
                 break;
                 
@@ -164,6 +200,24 @@ public class DragonBrain : MonoBehaviour
         if (CurrentState == DragonState.AttackPlayer && player != null)
         {
             TryFireball(player.position);
+        }
+        else if (CurrentState == DragonState.TopplePillar)
+        {
+            if (currentToppleTarget == null || currentToppleTarget.IsToppled)
+            {
+                EvaluateState();
+                return;
+            }
+
+            float distance = Vector3.Distance(transform.position, currentToppleTarget.transform.position);
+            if (distance <= toppleReachDistance)
+            {
+                Debug.Log($"[DragonBrain] Reached pillar {currentToppleTarget.name}, toppling!");
+                Vector3 attackDir = (currentToppleTarget.transform.position - transform.position).normalized;
+                currentToppleTarget.Topple(attackDir);
+                currentToppleTarget = null;
+                EvaluateState();
+            }
         }
     }
 
@@ -233,7 +287,7 @@ public class DragonBrain : MonoBehaviour
 
     private bool MinionsNeedDefense()
     {
-        return false;
+        return minionManager != null && minionManager.HasActiveMinions();
     }
 
     private bool PlayerInRange(float radius)

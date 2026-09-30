@@ -23,6 +23,11 @@ public class MinionManager : MonoBehaviour
         }
     }
 
+    public bool HasActiveMinions()
+    {
+        return activeMinions.Count > 0;
+    }
+
     /// <summary>
     /// Registers a newly spawned minion explicitly.
     /// </summary>
