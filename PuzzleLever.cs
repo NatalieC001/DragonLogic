@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using PixelCrushers;
+using UnityEngine.Events;
 
 /// <summary>
 /// A puzzle lever that, when shot with a full power arrow, moves a target object
@@ -15,15 +16,12 @@ public class PuzzleLever : MonoBehaviour, IArrowTarget
     [Tooltip("The local direction to move the cover.")]
     public Vector3 moveDirection = Vector3.down;
 
-    [Tooltip("How far to move the cover in the specified direction.")]
-    public float moveDistance = 5f;
+    [Header("Configuration")]
+    public LeverConfigSO config;
 
-    [Tooltip("How fast the cover moves to its target position.")]
-    public float moveSpeed = 2f;
-
-    [Header("Dispel Mechanic")]
-    [Tooltip("Damage required to trigger the lever. A full power shot should equal or exceed this.")]
-    public float requiredDamage = 50f;
+    [Header("Events")]
+    public UnityEvent OnLeverActivated;
+    public UnityEvent OnCoverMoved;
 
     private bool isActivated = false;
     private Vector3 initialCoverPosition;
@@ -40,7 +38,8 @@ public class PuzzleLever : MonoBehaviour, IArrowTarget
         if (isActivated) return;
 
         // Check if the shot was powerful enough (full power shot requirement)
-        if (damage >= requiredDamage)
+        float reqDamage = config != null ? config.requiredDamage : 50f;
+        if (damage >= reqDamage)
         {
             Debug.Log($"<color=cyan>[PuzzleLever] Lever hit with enough force! Activating.</color>");
             ActivateLever();
@@ -60,8 +59,10 @@ public class PuzzleLever : MonoBehaviour, IArrowTarget
         }
 
         isActivated = true;
+        OnLeverActivated?.Invoke();
         initialCoverPosition = targetCover.transform.position;
-        targetCoverPosition = initialCoverPosition + (moveDirection.normalized * moveDistance);
+        float distance = config != null ? config.moveDistance : 5f;
+        targetCoverPosition = initialCoverPosition + (moveDirection.normalized * distance);
 
         StartCoroutine(MoveCoverRoutine());
     }
@@ -69,14 +70,16 @@ public class PuzzleLever : MonoBehaviour, IArrowTarget
     private IEnumerator MoveCoverRoutine()
     {
         float t = 0f;
+        float speed = config != null ? config.moveSpeed : 2f;
         while (t < 1f)
         {
-            t += Time.deltaTime * moveSpeed;
+            t += Time.deltaTime * speed;
             targetCover.transform.position = Vector3.Lerp(initialCoverPosition, targetCoverPosition, t);
             yield return null;
         }
 
         targetCover.transform.position = targetCoverPosition;
+        OnCoverMoved?.Invoke();
 
         // If the cover has a CoverPoint script, tell it to trigger the minions
         CoverPoint coverPoint = targetCover.GetComponent<CoverPoint>();
@@ -101,7 +104,8 @@ public class PuzzleLever : MonoBehaviour, IArrowTarget
         {
             Gizmos.color = Color.magenta;
             Vector3 startPos = targetCover.transform.position;
-            Vector3 endPos = startPos + (moveDirection.normalized * moveDistance);
+            float distance = config != null ? config.moveDistance : 5f;
+            Vector3 endPos = startPos + (moveDirection.normalized * distance);
 
             // Draw a line indicating the movement path
             Gizmos.DrawLine(startPos, endPos);
