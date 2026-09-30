@@ -20,22 +20,30 @@ This codebase relies on two primary message systems to decouple components:
 
 
 **Core Logic & Utility Scoring (Desire Table):**
-The `DragonBrain` relies on a Utility Scoring System to evaluate tactical priorities dynamically, replacing rigid if/else blocks. This system calculates "desire scores" for various states based on internal variables and external events (such as minions under attack or segments lost).
+The `DragonBrain` evaluates tactical priorities dynamically on a continuous, frame-by-frame basis, allowing it to break away from paths mid-travel based on real-time priorities. This system calculates "desire scores" across three core behavioral pillars: Defend Self, Execute Grid Strategy, and Direct Minions.
 
-| State | Condition / Influences | Desire Score |
-| :--- | :--- | :--- |
-| `FleeToHeal` | **Absolute Priority:** If `needsHealingImperative` is true and crystal is available. | `100f` |
-| `FleeToHeal` | **Scaling Priority:** If segments are lost, score scales proportionally based on percentage of lost segments. | `0f` to `50f` |
-| `DefendMinions`| Triggers when the `"MinionUnderFire"` message is received via PixelCrushers MessageSystem. | `75f` (if flagged) or `0f` |
-| `TopplePillar` | **Opportunistic:** Evaluates environmental puzzle recipes (e.g. Oil opportunities) provided by `SpatialStrategyMiniGame`. | `60f` (or `90f` if Oil recipe) or `0f` |
-| `AttackPlayer` | **Baseline Aggression:** Always active if the player exists. | `40f` |
-| `DenyArea`     | **Baseline Tactical:** Always active if the player exists (used for shooting hazards). | `35f` |
-| `Roam`         | **Fallback:** Default state if no other action is prioritized. | `10f` |
+*Conceptual Live Desire Table:*
+```text
+▼ LIVE DESIRE TABLE (Read Only Concept)
+[■■■■■■■■□□] 0.82 - Defend Self (Crystal/Health)
+[■■■■■■■■■■] 0.95 - Execute Grid Strategy (Deny Area/Topple)
+[■■■■■■□□□□] 0.40 - Direct Minions (Defend/Command)
+```
 
-**Event-Driven Triggers:**
-*   **Minions Under Attack:** When a minion is hit, it broadcasts `"MinionUnderFire"`. The `DragonBrain` intercepts this, flags `minionsNeedDefenseFlag`, and forces a state evaluation, potentially spiking the `DefendMinions` desire score to 75.
-*   **The Crystal Undertake (Healing Imperative):** The `SegmentManager` tracks health parts. When it reaches a critical threshold, it fires `OnHealingImperativeReached`. The brain drops all priorities, sets `needsHealingImperative = true`, commands minions to charge to cover its retreat, and spikes the `FleeToHeal` score to 100 to retreat to the crystal.
-*   **Visual Impairment:** If the player is blinded (`VRHeadsetStickyBlindness.OnPlayerBlinded`), the dragon exploits this by commanding minions to charge.
+| State (`CurrentState`) | Personality Pillar | Condition / Influences | Desire Score |
+| :--- | :--- | :--- | :--- |
+| `FleeToHeal` / `DefendCrystal` | **Defend Self** | **Absolute Priority:** Triggers immediately if `OnHealingImperativeReached` fires (critical segments lost). The Dragon breaks its current path to route directly to a crystal's observation spline to regenerate. | `100f` |
+| `DefendMinions`| **Direct Minions** | Triggers when the `"MinionUnderFire"` message is intercepted or player is blinded. The Dragon actively moves to shield or command its vulnerable minion waves. | `75f` |
+| `TopplePillar` | **Execute Grid Strategy** | Identifies a `ToppleItem` closest to the player's predicted movement line to slice away walkable area and close up safe boundaries. | `60f` |
+| `DenyArea` | **Execute Grid Strategy** | **Baseline Strategic Aggression:** Evaluates open plane space to drop hazards (fire fields) ahead of the player's vector, constricting safe ground and applying debuffs (weakness/blindness). | `35f` to `95f` |
+| `AttackPlayer` | **Baseline** | Standard physical or projectile engagement if grid strategy is on cooldown. | `40f` |
+| `Roam`         | **Fallback** | Default evaluation state. | `10f` |
+
+**The Tactical Feedback Loop (Player Counter-Play):**
+The Dragon does not possess an absolute invulnerability state; the player can actively manipulate this Desire Table to stop the Dragon's "Grid Strategy" (Area Denial):
+*   **Attack a Crystal:** If the player attacks a crystal, the Dragon's "Defend Self" desire spikes. It drops its Area Denial priority to defend the crystal, giving the player breathing room.
+*   **Attack Minions:** Every living minion grants the Dragon a cumulative +2% strength augment. Killing minions in their exposed transit window weakens the Dragon, and forces the AI into `DefendMinions` mode to protect its remaining forces.
+*   **Prevent Enclosure:** The player must not stand in dark fire hazards, which apply mechanical penalties (weaker power shots, visual blindness overlay). They must keep the Dragon on the back foot to prevent the absolute territory game-over win condition.
 
 ```mermaid
 classDiagram
@@ -300,6 +308,11 @@ classDiagram
 
 **Player Experience:** The player must navigate a dangerous floor, avoiding fire or sticky patches, but can also use their elemental arrows to cleverly neutralize or alter these hazards.
 
+**Core Logic:**
+Handles the instantiation and radius math of expanding dark/spirit fire particle fields.
+*   **Radius Expansion:** It targets coordinates ahead of the player's vector, scaling the particle fields' diameters over time to constrict safe ground.
+*   **Mechanical Penalty:** It tracks whether the player's position falls within the active zone. If true, it applies debuffs: weakening the player's power shots and triggering a visual blindness overlay (`VRHeadsetStickyBlindness`) that completely hides the positions of forming minion waves in the outer arena.
+
 ```mermaid
 classDiagram
     class GroundHazard {
@@ -347,6 +360,9 @@ classDiagram
 
 **Player Experience:** The player experiences explosive, arena-altering destruction. The safe zones they relied on might suddenly be crushed by a falling pillar.
 
+**Core Logic:**
+`ToppleItem` structures are actively targeted by the Dragon's AI to cut off escape routes. The strategy system calculates which `ToppleItem` is closest to the player's predicted movement line and tips it over onto the plane to slice away walkable area and close up safe operational boundaries.
+
 ```mermaid
 classDiagram
     class ToppleItem {
@@ -386,6 +402,12 @@ classDiagram
 **Purpose:** Manages a specific sub-system or puzzle phase within the battle that requires spatial reasoning or strategic placement.
 
 **Player Experience:** Breaks up the standard combat loop, challenging the player to think tactically about positioning or solve a quick puzzle under pressure.
+
+**Core Logic & Spatial Enclosure:**
+The strategy minigame manages an aggressive game of physical enclosure on a continuous, flat 3D plane.
+*   **Grid Math:** It evaluates the remaining open plane space and calculates coordinates ahead of the player's movement vector.
+*   **Herding the Player:** It commands the Dragon to place hazards (dark/spirit fire fields) thoughtfully to trap the player, limit their options, and intentionally herd them into disadvantageous quadrants.
+*   **Absolute Territory Win Condition:** It tracks the overall game-over countdown. If the player fails to clear the arena before the timer expires, this class floods the plane with dark fire and toppled items until no safe coordinates remain, resulting in a game over.
 
 ```mermaid
 classDiagram
