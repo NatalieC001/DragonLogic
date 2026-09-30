@@ -1,348 +1,244 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 /// <summary>
-/// Decision layer for the Asian Fire Dragon boss.
-///
-/// The brain does not move the dragon. BossNavigator moves the dragon. The
-/// brain evaluates a small priority list every tick, picks the highest-priority
-/// state whose condition is true, and — only when the winner changes — calls
-/// the matching navigator intent method. That single rule (retarget on state
-/// change, not every frame) is what lets the navigator finish a maneuver
-/// without the brain fighting it.
-///
-/// Priority, highest first:
-///   Retreat      -> HP below retreat threshold. Abandon everything, flee.
-///   SeekCrystal  -> HP below crystal threshold. Go heal.
-///   Retaliate    -> recently damaged and player in aggro range. Turn on shooter.
-///   Bombard      -> player in attack range. Fire.
-///   Pursue       -> player in aggro range. Close distance.
-///   Defend       -> external defend order is active. Guard the crystal.
-///   Roam         -> default. Wander.
-///
-/// Damage arriving from DragonSegment -> BossCreature should be forwarded into
-/// AbsorbHit so the brain can raise the Retaliate priority and shed a segment.
+/// Pillar C - Event-Driven Tactician
+/// Replaces the old Update-polling loop. Evaluates states dynamically based on events.
+/// Relies on SpatialStrategyMiniGame for spatial targets and BossNavigator for movement execution.
 /// </summary>
+public enum DragonState
+{
+    FleeToHeal,
+    DefendCrystal,
+    TopplePillar,
+    DenyArea,       // Shoot floor
+    AttackPlayer,
+    DefendMinions,
+    Roam
+}
+
 public class DragonBrain : MonoBehaviour
 {
-    public enum DragonState
-    {
-        Roam,
-        Pursue,
-        Bombard,
-        Retaliate,
-        SeekCrystal,
-        Defend,
-        Retreat
-    }
-
-    /// <summary>
-    /// Priority order. Index 0 wins over index 1, etc. Do not reorder without
-    /// thinking about which condition should preempt which.
-    /// </summary>
-    private static readonly DragonState[] PriorityOrder =
-    {
-        DragonState.Retreat,
-        DragonState.SeekCrystal,
-        DragonState.Retaliate,
-        DragonState.Bombard,
-        DragonState.Pursue,
-        DragonState.Defend,
-        DragonState.Roam
-    };
-
-    public DragonState State { get; private set; } = DragonState.Roam;
-
-    [Header("Senses")]
-    private Transform player;
-    public float aggroRadius = 15f;
-    public float attackRadius = 12f;
+    public DragonState CurrentState { get; private set; } = DragonState.Roam;
 
     [Header("Subsystems")]
     public BossNavigator navigator;
     public DragonFireballCaster fireball;
     public DragonSnakeMovementStyle dragon;
+    public SpatialStrategyMiniGame strategyMiniGame;
+    public BossStatsAndHealth statsAndHealth;
 
-    [Header("Vitals")]
-    public float maxHealth = 100f;
-    public float currentHealth = 100f;
-    public float crystalSeekRatio = 0.6f;
-    public float retreatRatio = 0.35f;
-
-    [Header("Segment Vitals")]
-    public float healthPerSegment = 10f;
-    public int maxBodySegments = 8;
-    public int minBodySegments = 3;
-    public float regenSecondsPerSegment = 1.5f;
-    public float crystalRegenRadius = 8f;
+    [Header("Senses")]
+    public float aggroRadius = 15f;
+    public float attackRadius = 12f;
 
     [Header("Combat")]
     public float attackCooldown = 2f;
-    public float retaliateMemorySeconds = 3f;
-
-    [Header("Repath Throttle")]
-    [Tooltip("Minimum seconds between re-issuing the same navigation command " +
-             "while the current state is stable. Prevents the brain from " +
-             "fighting the navigator's turn acceleration.")]
-    public float repathInterval = 1.5f;
-
-    // --- runtime ---
     private float lastAttackTime;
-    private float lastRepathTime;
-    private float regenAccumulator;
-    private float damageAccumulator;
-    private float lastDamageTime = -999f;
+    
+    private float damageAccumulator = 0f;
+    private float healthPerSegment = 10f;
 
-    // Defend order: raised externally (via message or direct call), lowered
-    // when the crystal is gone or the order is explicitly cancelled.
-    private bool defendOrderActive;
+    private Transform player;
 
     private void Start()
     {
         player = GameObject.FindGameObjectWithTag("Player")?.transform;
-        Debug.Assert(player != null, $"[DragonBrain] No GameObject tagged 'Player' found in scene. Dragon will not pursue or attack.");
+        Debug.Assert(player != null, "[DragonBrain] No GameObject tagged 'Player' found.");
+        Debug.Assert(strategyMiniGame != null, "[DragonBrain] StrategyMiniGame reference required.");
     }
 
-    void Update()
+    private void OnEnable()
     {
-        DragonState winner = ResolveState();
+        // Subscribe to relevant external events to trigger state evaluation
+        VRHeadsetStickyBlindness.OnPlayerBlinded += HandlePlayerBlinded;
+    }
 
-        if (winner != State)
+    private void OnDisable()
+    {
+        VRHeadsetStickyBlindness.OnPlayerBlinded -= HandlePlayerBlinded;
+    }
+
+    /// <summary>
+    /// Evaluates all possible states based on the current situation and transitions if needed.
+    /// This is called via events (damage taken, crystals destroyed, player blinded) rather than Update.
+    /// </summary>
+    public void EvaluateState()
+    {
+        List<DragonState> validStates = new List<DragonState>();
+
+        // 1. Check Survival Priorities (highest)
+        if (NeedsHealing() && HasDefendCrystal())
         {
-            State = winner;
-            lastRepathTime = 0f;   // force an immediate retarget on transition
-            OnEnter(winner);
+            validStates.Add(DragonState.FleeToHeal);
         }
 
-        RunState();
-        UpdateSegmentRegen();
-    }
-
-    // ---------------------------------------------------------------------
-    // Priority resolution
-    // ---------------------------------------------------------------------
-
-    DragonState ResolveState()
-    {
-        foreach (DragonState candidate in PriorityOrder)
+        // 2. Check Minion Defense (high)
+        if (MinionsNeedDefense())
         {
-            if (IsConditionTrue(candidate))
-                return candidate;
+            validStates.Add(DragonState.DefendMinions);
         }
-        return DragonState.Roam;
+
+        // 3. Check Aggressive / Spatial Control Priorities
+        if (PlayerInRange(attackRadius))
+        {
+            validStates.Add(DragonState.AttackPlayer);
+            validStates.Add(DragonState.DenyArea); // Spatial control
+
+            if (strategyMiniGame.GetOptimalToppleTarget() != null)
+            {
+                validStates.Add(DragonState.TopplePillar);
+            }
+        }
+        else if (PlayerInRange(aggroRadius))
+        {
+            validStates.Add(DragonState.AttackPlayer);
+        }
+
+        // 4. Default to Roam if nothing else
+        if (validStates.Count == 0)
+        {
+            validStates.Add(DragonState.Roam);
+        }
+
+        // Tie-breaker: Pick a random valid state to simulate "gritting it out"
+        DragonState newState = validStates[Random.Range(0, validStates.Count)];
+
+        if (newState != CurrentState)
+        {
+            TransitionToState(newState);
+        }
     }
 
-    bool IsConditionTrue(DragonState s)
+    private void TransitionToState(DragonState newState)
     {
-        float hp = maxHealth > 0f ? currentHealth / maxHealth : 0f;
+        CurrentState = newState;
+        Debug.Log($"[DragonBrain] Transitioning to State: {newState}");
 
-        switch (s)
+        switch (newState)
         {
-            case DragonState.Retreat:
-                return hp <= retreatRatio;
-
-            case DragonState.SeekCrystal:
-                return hp <= crystalSeekRatio && HasDefendCrystal();
-
-            case DragonState.Retaliate:
-                return (Time.time - lastDamageTime) <= retaliateMemorySeconds
-                       && PlayerInRange(aggroRadius);
-
-            case DragonState.Bombard:
-                return PlayerInRange(attackRadius);
-
-            case DragonState.Pursue:
-                return PlayerInRange(aggroRadius);
-
-            case DragonState.Defend:
-                return defendOrderActive && HasDefendCrystal();
-
+            case DragonState.FleeToHeal:
+                if (navigator != null) navigator.DefendCrystalCommand(); // Use observation spline
+                break;
+                
+            case DragonState.DefendCrystal:
+                if (navigator != null) navigator.DefendCrystalCommand();
+                break;
+                
+            case DragonState.TopplePillar:
+                ToppleItem target = strategyMiniGame.GetOptimalToppleTarget();
+                if (target != null && navigator != null)
+                {
+                    // Interrupt current path and fly directly to the pillar to knock it over
+                    navigator.Freestyle(target.transform.position); 
+                }
+                break;
+                
+            case DragonState.DenyArea:
+                Vector3 hazardTarget = strategyMiniGame.GetOptimalHazardCoordinate();
+                if (navigator != null)
+                {
+                    navigator.Freestyle(hazardTarget); // Reposition to get a good angle
+                }
+                TryFireball(hazardTarget);
+                break;
+                
+            case DragonState.AttackPlayer:
+                if (navigator != null) navigator.FreestyleToPlayer();
+                if (player != null) TryFireball(player.position);
+                break;
+                
+            case DragonState.DefendMinions:
+                // Move towards minion cover points to act as a shield
+                break;
+                
             case DragonState.Roam:
-                return true;
-
-            default:
-                return false;
+                if (navigator != null) navigator.FreestyleArea();
+                break;
         }
     }
 
-    bool PlayerInRange(float radius)
+    private void Update()
     {
-        if (player == null) return false;
-        return Vector3.Distance(transform.position, player.position) <= radius;
+        // Minimal update logic: just continuous tracking or cooldown management if currently in an active attack state
+        if (CurrentState == DragonState.AttackPlayer && player != null)
+        {
+            TryFireball(player.position);
+        }
     }
 
-    bool HasDefendCrystal()
+    private void TryFireball(Vector3 targetPosition)
+    {
+        if (fireball == null) return;
+        if (Time.time - lastAttackTime < attackCooldown) return;
+
+        fireball.LaunchAt(targetPosition);
+        lastAttackTime = Time.time;
+    }
+
+    // --- Dynamic Triggers ---
+
+    private void HandlePlayerBlinded()
+    {
+        Debug.Log("[DragonBrain] Player is Blinded! Triggering Minion Charge (Blind Spot)!");
+        CommandMinionsToCharge();
+        EvaluateState();
+    }
+
+    public void OnHealthSegmentLost()
+    {
+        Debug.Log("[DragonBrain] Lost a segment! Retreating and covering retreat!");
+        CommandMinionsToCharge(); // Covering retreat trigger
+        EvaluateState();
+    }
+
+    public void AbsorbHit(float amount)
+    {
+        if (dragon != null && statsAndHealth != null)
+        {
+            damageAccumulator += amount;
+            statsAndHealth.TakeDamage(amount, ElementTypeOB7.Normal);
+            
+            if (damageAccumulator >= healthPerSegment && dragon.BodySegmentCount > 3)
+            {
+                damageAccumulator -= healthPerSegment;
+                dragon.ShedOneBodySegment();
+                OnHealthSegmentLost();
+            }
+            EvaluateState();
+        }
+    }
+
+    private void CommandMinionsToCharge()
+    {
+        CoverPoint[] covers = FindObjectsByType<CoverPoint>(FindObjectsSortMode.None);
+        foreach (var cover in covers)
+        {
+            cover.TriggerCharge();
+        }
+    }
+
+    // --- Condition Checks ---
+
+    private bool NeedsHealing()
+    {
+        // Heal if we are below max body segments (have lost a piece)
+        return dragon != null && dragon.BodySegmentCount < 8; // Assuming 8 is max as in original code
+    }
+
+    private bool HasDefendCrystal()
     {
         return navigator != null && navigator.DefendCrystal != null;
     }
 
-    // ---------------------------------------------------------------------
-    // State execution
-    // ---------------------------------------------------------------------
-
-    void OnEnter(DragonState s)
+    private bool MinionsNeedDefense()
     {
-        switch (s)
-        {
-            case DragonState.Retreat:
-                if (navigator != null) navigator.MoveToNearestEscape();
-                lastRepathTime = Time.time;
-                break;
-
-            case DragonState.SeekCrystal:
-                if (navigator != null) navigator.DefendCrystalCommand();
-                lastRepathTime = Time.time;
-                break;
-
-            case DragonState.Retaliate:
-                if (navigator != null) navigator.FreestyleToPlayer();
-                lastRepathTime = Time.time;
-                break;
-
-            case DragonState.Bombard:
-                if (navigator != null) navigator.FreestyleToPlayer();
-                lastAttackTime = Time.time - attackCooldown; // fire immediately on arrival
-                lastRepathTime = Time.time;
-                break;
-
-            case DragonState.Pursue:
-                if (navigator != null) navigator.FreestyleToPlayer();
-                lastRepathTime = Time.time;
-                break;
-
-            case DragonState.Defend:
-                if (navigator != null) navigator.DefendCrystalCommand();
-                lastRepathTime = Time.time;
-                break;
-
-            case DragonState.Roam:
-                if (navigator != null) navigator.FreestyleArea();
-                lastRepathTime = Time.time;
-                break;
-        }
+        return false;
     }
 
-    void RunState()
+    private bool PlayerInRange(float radius)
     {
-        switch (State)
-        {
-            case DragonState.Retaliate:
-            case DragonState.Bombard:
-            case DragonState.Pursue:
-                // Keep the navigator pointed at the moving player, but throttled.
-                if (navigator != null && Time.time - lastRepathTime > repathInterval)
-                {
-                    navigator.FreestyleToPlayer();
-                    lastRepathTime = Time.time;
-                }
-                if (State == DragonState.Bombard)
-                    TryFireball();
-                break;
-
-            case DragonState.SeekCrystal:
-            case DragonState.Defend:
-                if (navigator != null && Time.time - lastRepathTime > repathInterval)
-                {
-                    navigator.DefendCrystalCommand();
-                    lastRepathTime = Time.time;
-                }
-                break;
-
-            case DragonState.Retreat:
-                if (navigator != null && Time.time - lastRepathTime > repathInterval)
-                {
-                    navigator.MoveToNearestEscape();
-                    lastRepathTime = Time.time;
-                }
-                break;
-
-            case DragonState.Roam:
-                // Let the navigator finish its freestyle leg; only re-issue
-                // when it has arrived and picked nothing new, or after the
-                // throttle elapses.
-                if (navigator != null && Time.time - lastRepathTime > repathInterval * 2f)
-                {
-                    navigator.FreestyleArea();
-                    lastRepathTime = Time.time;
-                }
-                break;
-        }
-    }
-
-    void TryFireball()
-    {
-        if (fireball == null || player == null) return;
-        if (Time.time - lastAttackTime < attackCooldown) return;
-
-        fireball.LaunchAt(player.position);
-        lastAttackTime = Time.time;
-    }
-
-    void UpdateSegmentRegen()
-    {
-        if (dragon == null) return;
-
-        bool nearCrystal = false;
-        HealthCrystal crystal = navigator != null ? navigator.DefendCrystal : null;
-        if (crystal != null)
-        {
-            float d = Vector3.Distance(transform.position, crystal.transform.position);
-            nearCrystal = d <= crystalRegenRadius;
-        }
-
-        if (!nearCrystal) { regenAccumulator = 0f; return; }
-        if (dragon.BodySegmentCount >= maxBodySegments) { regenAccumulator = 0f; return; }
-
-        regenAccumulator += Time.deltaTime / regenSecondsPerSegment;
-        while (regenAccumulator >= 1f && dragon.BodySegmentCount < maxBodySegments)
-        {
-            regenAccumulator -= 1f;
-            dragon.RegrowBodySegment();
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // External hooks
-    // ---------------------------------------------------------------------
-
-    /// <summary>
-    /// BossCreature should forward the amount of damage it actually applied
-    /// here. Raises Retaliate priority and sheds a segment every
-    /// healthPerSegment worth of accumulated damage.
-    /// </summary>
-    public void AbsorbHit(float amount)
-    {
-        lastDamageTime = Time.time;
-        damageAccumulator += amount;
-
-        if (dragon != null &&
-            damageAccumulator >= healthPerSegment &&
-            dragon.BodySegmentCount > minBodySegments)
-        {
-            damageAccumulator -= healthPerSegment;
-            dragon.ShedOneBodySegment();
-        }
-    }
-
-    /// <summary>
-    /// Raise a defend order. The brain will hold Defend priority until either
-    /// the crystal is destroyed or ClearDefendOrder is called.
-    /// </summary>
-    public void IssueDefendOrder()
-    {
-        defendOrderActive = true;
-    }
-
-    public void ClearDefendOrder()
-    {
-        defendOrderActive = false;
-    }
-
-    /// <summary>
-    /// Notify the brain that the defended crystal is gone. Called from the
-    /// crystal itself, or from BossNavigator when it exits defend mode.
-    /// </summary>
-    public void OnDefendCrystalDestroyed()
-    {
-        defendOrderActive = false;
+        if (player == null) return false;
+        return Vector3.Distance(transform.position, player.position) <= radius;
     }
 }

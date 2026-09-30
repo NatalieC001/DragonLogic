@@ -152,6 +152,49 @@ public class StandardCreature : MonoBehaviour, IArrowTarget
             Destroy(gameObject);
         }
     }
+    // NEW: Movement logic for spatial strategy minigame
+    private Vector3 targetMovePosition;
+    private bool isMovingToCover = false;
+    private bool isChargingPlayer = false;
+    private Transform chargeTarget;
+    public float flightSpeed = 8f;
+
+    public void MoveToCover(Vector3 coverPosition)
+    {
+        Dreamteck.Splines.SplineFollower follower = GetComponent<Dreamteck.Splines.SplineFollower>();
+        if (follower != null)
+        {
+            follower.follow = false;
+        }
+        targetMovePosition = coverPosition;
+        isMovingToCover = true;
+        isChargingPlayer = false;
+    }
+    
+    public void ChargePlayer(Transform playerTransform)
+    {
+        isMovingToCover = false;
+        isChargingPlayer = true;
+        chargeTarget = playerTransform;
+    }
+
+    private void Update()
+    {
+        if (isDead) return;
+        if (isMovingToCover)
+        {
+            Vector3 dir = (targetMovePosition - transform.position).normalized;
+            transform.position += dir * flightSpeed * Time.deltaTime;
+            if (dir.sqrMagnitude > 0.01f) transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(dir), 360f * Time.deltaTime);
+            if (Vector3.Distance(transform.position, targetMovePosition) < 0.5f) isMovingToCover = false;
+        }
+        else if (isChargingPlayer && chargeTarget != null)
+        {
+            Vector3 dir = (chargeTarget.position - transform.position).normalized;
+            transform.position += dir * flightSpeed * Time.deltaTime;
+            if (dir.sqrMagnitude > 0.01f) transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(dir), 360f * Time.deltaTime);
+        }
+    }
 }
 
 

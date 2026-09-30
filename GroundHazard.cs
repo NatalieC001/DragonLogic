@@ -24,6 +24,12 @@ public class GroundHazard : MonoBehaviour
         triggerCollider.isTrigger = true;
     }
 
+    private void Start()
+    {
+        SpatialStrategyMiniGame strategy = FindFirstObjectByType<SpatialStrategyMiniGame>();
+        if (strategy != null) strategy.RegisterHazardZone(transform.position);
+    }
+
     private void OnEnable()
     {
         StartCoroutine(Lifetime());
