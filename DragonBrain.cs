@@ -95,8 +95,8 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
             validStates.Add(DragonState.AttackPlayer);
             validStates.Add(DragonState.DenyArea);
 
-            // If there's a good topple target, prioritize it
-            if (strategyMiniGame != null && strategyMiniGame.GetOptimalToppleTarget() != null)
+            // If there's a good topple target (recipe or standard), prioritize it
+            if (strategyMiniGame != null && strategyMiniGame.GetStrategicToppleTarget().pillar != null)
             {
                 validStates.Add(DragonState.TopplePillar);
             }
