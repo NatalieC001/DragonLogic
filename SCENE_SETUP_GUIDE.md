@@ -2,13 +2,6 @@
 
 This guide is intended for level designers and environment artists to correctly integrate and configure the new structural combat systems into the Unity scene. Follow these steps sequentially to ensure the decoupled architecture works correctly.
 
-
-> **Note on Modularity (Namespaces):**
-> All of these new systems are wrapped in modular namespaces. If you are referencing these scripts in your own code, ensure you include:
-> - `using VRDragonBoss.AI;` (for DragonBrain and AI configs)
-> - `using VRDragonBoss.GameBoardSystem;` (for the grid, hazards, blindess, and mini-game)
-> - `using VRDragonBoss.Environment;` (for puzzle levers and topple items)
-
 ## Phase 1: ScriptableObject Configuration (The Data Layer)
 Before setting up the scene, you must create the data assets that drive the gameplay tunables.
 1. Right-click in your Project window (e.g., in a `Assets/Data/Configs` folder).

@@ -20,21 +20,30 @@ namespace VRDragonBoss.Environment
         [Tooltip("The GameObject to move out of the way (e.g., a wall or pillar hiding minions).")]
         public GameObject targetCover;
 
-        [Tooltip("The local direction to move the cover.")]
-        public Vector3 moveDirection = Vector3.down;
+    [Header("Configuration")]
+    public LeverConfigSO config;
 
-        [Header("Configuration")]
-        public LeverConfigSO config;
-
-        [Header("Events")]
-        public UnityEvent OnLeverActivated;
-        public UnityEvent OnCoverMoved;
+    [Header("Events")]
+    public UnityEvent OnLeverActivated;
+    public UnityEvent OnCoverMoved;
 
         private bool isActivated = false;
         private Vector3 initialCoverPosition;
         private Vector3 targetCoverPosition;
 
-        private void Awake()
+    private void Awake()
+    {
+        // Ensure this lever is on the Enemy layer so the arrow can hit it
+        gameObject.layer = LayerMask.NameToLayer("Enemy");
+    }
+
+    public void OnArrowHit(float damage, Vector3 impactPoint, ElementTypeOB7 elementType)
+    {
+        if (isActivated) return;
+
+        // Check if the shot was powerful enough (full power shot requirement)
+        float reqDamage = config != null ? config.requiredDamage : 50f;
+        if (damage >= reqDamage)
         {
             // Ensure this lever is on the Enemy layer so the arrow can hit it
             gameObject.layer = LayerMask.NameToLayer("Enemy");
@@ -65,28 +74,28 @@ namespace VRDragonBoss.Environment
                 return;
             }
 
-            isActivated = true;
-            OnLeverActivated?.Invoke();
-            initialCoverPosition = targetCover.transform.position;
-            float distance = config != null ? config.moveDistance : 5f;
-            targetCoverPosition = initialCoverPosition + (moveDirection.normalized * distance);
+        isActivated = true;
+        OnLeverActivated?.Invoke();
+        initialCoverPosition = targetCover.transform.position;
+        float distance = config != null ? config.moveDistance : 5f;
+        targetCoverPosition = initialCoverPosition + (moveDirection.normalized * distance);
 
             StartCoroutine(MoveCoverRoutine());
         }
 
-        private IEnumerator MoveCoverRoutine()
+    private IEnumerator MoveCoverRoutine()
+    {
+        float t = 0f;
+        float speed = config != null ? config.moveSpeed : 2f;
+        while (t < 1f)
         {
-            float t = 0f;
-            float speed = config != null ? config.moveSpeed : 2f;
-            while (t < 1f)
-            {
-                t += Time.deltaTime * speed;
-                targetCover.transform.position = Vector3.Lerp(initialCoverPosition, targetCoverPosition, t);
-                yield return null;
-            }
+            t += Time.deltaTime * speed;
+            targetCover.transform.position = Vector3.Lerp(initialCoverPosition, targetCoverPosition, t);
+            yield return null;
+        }
 
-            targetCover.transform.position = targetCoverPosition;
-            OnCoverMoved?.Invoke();
+        targetCover.transform.position = targetCoverPosition;
+        OnCoverMoved?.Invoke();
 
             // If the cover has a CoverPoint script, tell it to trigger the minions
             global::CoverPoint coverPoint = targetCover.GetComponent<global::CoverPoint>();
@@ -107,12 +116,10 @@ namespace VRDragonBoss.Environment
 
         private void OnDrawGizmos()
         {
-            if (targetCover != null)
-            {
-                Gizmos.color = Color.magenta;
-                Vector3 startPos = targetCover.transform.position;
-                float distance = config != null ? config.moveDistance : 5f;
-                Vector3 endPos = startPos + (moveDirection.normalized * distance);
+            Gizmos.color = Color.magenta;
+            Vector3 startPos = targetCover.transform.position;
+            float distance = config != null ? config.moveDistance : 5f;
+            Vector3 endPos = startPos + (moveDirection.normalized * distance);
 
                 // Draw a line indicating the movement path
                 Gizmos.DrawLine(startPos, endPos);
