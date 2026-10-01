@@ -6,6 +6,7 @@ using UnityEngine.Events;
 using VRDragonBoss.AI;
 using VRDragonBoss.GameBoardSystem;
 using VRDragonBoss.Environment;
+using System;
 
 namespace VRDragonBoss.Environment
 {
@@ -88,7 +89,7 @@ namespace VRDragonBoss.Environment
             OnCoverMoved?.Invoke();
 
             // If the cover has a CoverPoint script, tell it to trigger the minions
-            CoverPoint coverPoint = targetCover.GetComponent<CoverPoint>();
+            global::CoverPoint coverPoint = targetCover.GetComponent<global::CoverPoint>();
             if (coverPoint != null)
             {
                 coverPoint.TriggerCharge();
@@ -96,7 +97,7 @@ namespace VRDragonBoss.Environment
             else
             {
                 // If the CoverPoint is on a child or parent, try to find it
-                coverPoint = targetCover.GetComponentInChildren<CoverPoint>();
+                coverPoint = targetCover.GetComponentInChildren<global::CoverPoint>();
                 if (coverPoint != null)
                 {
                     coverPoint.TriggerCharge();

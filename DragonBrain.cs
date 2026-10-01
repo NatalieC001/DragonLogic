@@ -153,7 +153,7 @@ namespace VRDragonBoss.AI
                         // We aim for a point past the pillar in the hit direction to ensure a strong physical impact.
                         Vector3 swoopTarget = currentToppleTarget.transform.position + (targetData.optimalHitDirection * 15f);
 
-                        navigator.Freestyle(swoopTarget);
+                        navigator.SetDestination(swoopTarget);
                     }
                     break;
 
@@ -161,7 +161,7 @@ namespace VRDragonBoss.AI
                     Vector3 hazardTarget = strategyMiniGame.GetOptimalHazardCoordinate();
                     if (navigator != null)
                     {
-                        navigator.Freestyle(hazardTarget); // Reposition to get a good angle
+                        navigator.SetDestination(hazardTarget); // Reposition to get a good angle
                     }
                     TryFireball(hazardTarget);
                     break;
