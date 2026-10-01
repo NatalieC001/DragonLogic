@@ -18,7 +18,7 @@ public enum DragonState
     Roam
 }
 
-public class DragonBrain : MonoBehaviour, IMessageHandler
+namespace VRDragonBoss.AI
 {
     public DragonState CurrentState { get; private set; } = DragonState.Roam;
 
@@ -44,14 +44,18 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
     // Evaluated State Bools
     private bool needsHealingImperative = false;
 
-    private Transform player;
+        [Header("Animation Events")]
+        public UnityEvent OnPlayRoar;
+        public UnityEvent OnPlayAngryExpression;
+        public UnityEvent OnSwoopStart;
+        public UnityEvent OnSwoopEnd;
 
-    private void Start()
-    {
-        player = GameObject.FindGameObjectWithTag("Player")?.transform;
-        Debug.Assert(player != null, "[DragonBrain] No GameObject tagged 'Player' found.");
-        Debug.Assert(strategyMiniGame != null, "[DragonBrain] StrategyMiniGame reference required.");
-    }
+        [Header("Subsystems")]
+        public BossNavigator navigator;
+        public DragonFireballCaster fireball;
+        public DragonSnakeMovementStyle dragon;
+        public SpatialStrategyMiniGame strategyMiniGame;
+        public BossStatsAndHealth statsAndHealth;
 
     private void OnEnable()
     {
@@ -141,14 +145,9 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         {
             TransitionToState(bestState);
         }
-    }
+        }
 
-    private void TransitionToState(DragonState newState)
-    {
-        CurrentState = newState;
-        Debug.Log($"[DragonBrain] Transitioning to State: {newState}");
-
-        switch (newState)
+        private void TransitionToState(DragonState newState)
         {
             case DragonState.FleeToHeal:
                 if (navigator != null) navigator.DefendCrystalCommand();
@@ -189,7 +188,6 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
                 if (navigator != null) navigator.FreestyleArea();
                 break;
         }
-    }
 
     private void Update()
     {
@@ -199,10 +197,12 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         }
         else if (CurrentState == DragonState.TopplePillar)
         {
-            if (currentToppleTarget == null)
+            // Tactical evaluation mid-flight, throttled to prevent performance spikes and state thrashing
+            evaluationTimer -= Time.deltaTime;
+            if (evaluationTimer <= 0f)
             {
                 EvaluateState();
-                return;
+                evaluationTimer = 1.0f; // Evaluate once per second, or instantly on event triggers
             }
             float distance = Vector3.Distance(transform.position, currentToppleTarget.transform.position);
             float reachDist = config != null ? config.toppleReachDistance : 5f;
@@ -214,7 +214,6 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
                 EvaluateState();
             }
         }
-    }
 
     private void TryFireball(Vector3 targetPosition)
     {
@@ -222,27 +221,27 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         float cooldown = config != null ? config.attackCooldown : 2f;
         if (Time.time - lastAttackTime < cooldown) return;
 
-        fireball.LaunchAt(targetPosition);
-        lastAttackTime = Time.time;
-    }
+            fireball.LaunchAt(targetPosition);
+            lastAttackTime = Time.time;
+        }
 
-    // --- Dynamic Triggers ---
+        // --- Dynamic Triggers ---
 
-    private void HandlePlayerBlinded()
-    {
-        Debug.Log("[DragonBrain] Player is Blinded! Triggering Minion Charge (Blind Spot)!");
-        CommandMinionsToCharge();
-        EvaluateState();
-    }
+        private void HandlePlayerBlinded()
+        {
+            Debug.Log("[DragonBrain] Player is Blinded! Triggering Minion Charge (Blind Spot)!");
+            CommandMinionsToCharge();
+            EvaluateState();
+        }
 
     public void OnMessage(MessageArgs messageArgs)
     {
         if (messageArgs.message == "MinionUnderFire")
         {
-            minionsNeedDefenseFlag = true;
+            Debug.Log("[DragonBrain] Lost a segment! Retreating and covering retreat!");
+            CommandMinionsToCharge(); // Covering retreat trigger
             EvaluateState();
         }
-    }
 
     // --- Segment Manager C# Event Hooks ---
 
@@ -273,10 +272,10 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         MessageSystem.SendMessage(this, "DragonNeedsSupport", string.Empty);
     }
 
-    private bool HasDefendCrystal()
-    {
-        return navigator != null && navigator.DefendCrystal != null;
-    }
+        private bool HasDefendCrystal()
+        {
+            return navigator != null && navigator.DefendCrystal != null;
+        }
 
     private bool MinionsNeedDefense()
     {

@@ -3,18 +3,22 @@ using System.Collections;
 using PixelCrushers;
 using UnityEngine.Events;
 
-/// <summary>
-/// A puzzle lever that, when shot with a full power arrow, moves a target object
-/// (typically a minion cover) out of the way.
-/// </summary>
-public class PuzzleLever : MonoBehaviour, IArrowTarget
-{
-    [Header("Target & Movement")]
-    [Tooltip("The GameObject to move out of the way (e.g., a wall or pillar hiding minions).")]
-    public GameObject targetCover;
+using VRDragonBoss.AI;
+using VRDragonBoss.GameBoardSystem;
+using VRDragonBoss.Environment;
+using System;
 
-    [Tooltip("The local direction to move the cover.")]
-    public Vector3 moveDirection = Vector3.down;
+namespace VRDragonBoss.Environment
+{
+    /// <summary>
+    /// A puzzle lever that, when shot with a full power arrow, moves a target object
+    /// (typically a minion cover) out of the way.
+    /// </summary>
+    public class PuzzleLever : MonoBehaviour, IArrowTarget
+    {
+        [Header("Target & Movement")]
+        [Tooltip("The GameObject to move out of the way (e.g., a wall or pillar hiding minions).")]
+        public GameObject targetCover;
 
     [Header("Configuration")]
     public LeverConfigSO config;
@@ -23,9 +27,9 @@ public class PuzzleLever : MonoBehaviour, IArrowTarget
     public UnityEvent OnLeverActivated;
     public UnityEvent OnCoverMoved;
 
-    private bool isActivated = false;
-    private Vector3 initialCoverPosition;
-    private Vector3 targetCoverPosition;
+        private bool isActivated = false;
+        private Vector3 initialCoverPosition;
+        private Vector3 targetCoverPosition;
 
     private void Awake()
     {
@@ -41,22 +45,34 @@ public class PuzzleLever : MonoBehaviour, IArrowTarget
         float reqDamage = config != null ? config.requiredDamage : 50f;
         if (damage >= reqDamage)
         {
-            Debug.Log($"<color=cyan>[PuzzleLever] Lever hit with enough force! Activating.</color>");
-            ActivateLever();
+            // Ensure this lever is on the Enemy layer so the arrow can hit it
+            gameObject.layer = LayerMask.NameToLayer("Enemy");
         }
-        else
-        {
-            Debug.Log($"[PuzzleLever] Arrow hit lever, but not enough force. Damage: {damage}");
-        }
-    }
 
-    private void ActivateLever()
-    {
-        if (targetCover == null)
+        public void OnArrowHit(float damage, Vector3 impactPoint, ElementTypeOB7 elementType)
         {
-            Debug.LogWarning("[PuzzleLever] Activated, but no target cover assigned.");
-            return;
+            if (isActivated) return;
+
+            // Check if the shot was powerful enough (full power shot requirement)
+            float reqDamage = config != null ? config.requiredDamage : 50f;
+            if (damage >= reqDamage)
+            {
+                Debug.Log($"<color=cyan>[PuzzleLever] Lever hit with enough force! Activating.</color>");
+                ActivateLever();
+            }
+            else
+            {
+                Debug.Log($"[PuzzleLever] Arrow hit lever, but not enough force. Damage: {damage}");
+            }
         }
+
+        private void ActivateLever()
+        {
+            if (targetCover == null)
+            {
+                Debug.LogWarning("[PuzzleLever] Activated, but no target cover assigned.");
+                return;
+            }
 
         isActivated = true;
         OnLeverActivated?.Invoke();
@@ -64,8 +80,8 @@ public class PuzzleLever : MonoBehaviour, IArrowTarget
         float distance = config != null ? config.moveDistance : 5f;
         targetCoverPosition = initialCoverPosition + (moveDirection.normalized * distance);
 
-        StartCoroutine(MoveCoverRoutine());
-    }
+            StartCoroutine(MoveCoverRoutine());
+        }
 
     private IEnumerator MoveCoverRoutine()
     {
@@ -81,41 +97,41 @@ public class PuzzleLever : MonoBehaviour, IArrowTarget
         targetCover.transform.position = targetCoverPosition;
         OnCoverMoved?.Invoke();
 
-        // If the cover has a CoverPoint script, tell it to trigger the minions
-        CoverPoint coverPoint = targetCover.GetComponent<CoverPoint>();
-        if (coverPoint != null)
-        {
-            coverPoint.TriggerCharge();
-        }
-        else
-        {
-            // If the CoverPoint is on a child or parent, try to find it
-            coverPoint = targetCover.GetComponentInChildren<CoverPoint>();
+            // If the cover has a CoverPoint script, tell it to trigger the minions
+            global::CoverPoint coverPoint = targetCover.GetComponent<global::CoverPoint>();
             if (coverPoint != null)
             {
                 coverPoint.TriggerCharge();
             }
+            else
+            {
+                // If the CoverPoint is on a child or parent, try to find it
+                coverPoint = targetCover.GetComponentInChildren<global::CoverPoint>();
+                if (coverPoint != null)
+                {
+                    coverPoint.TriggerCharge();
+                }
+            }
         }
-    }
 
-    private void OnDrawGizmos()
-    {
-        if (targetCover != null)
+        private void OnDrawGizmos()
         {
             Gizmos.color = Color.magenta;
             Vector3 startPos = targetCover.transform.position;
             float distance = config != null ? config.moveDistance : 5f;
             Vector3 endPos = startPos + (moveDirection.normalized * distance);
 
-            // Draw a line indicating the movement path
-            Gizmos.DrawLine(startPos, endPos);
+                // Draw a line indicating the movement path
+                Gizmos.DrawLine(startPos, endPos);
 
-            // Draw a wire cube at the destination
-            Gizmos.DrawWireCube(endPos, targetCover.GetComponent<Collider>() != null ? targetCover.GetComponent<Collider>().bounds.size : Vector3.one);
+                // Draw a wire cube at the destination
+                Gizmos.DrawWireCube(endPos, targetCover.GetComponent<Collider>() != null ? targetCover.GetComponent<Collider>().bounds.size : Vector3.one);
 
-            // Draw a line from the lever to the target for visual connection
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawLine(transform.position, startPos);
+                // Draw a line from the lever to the target for visual connection
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawLine(transform.position, startPos);
+            }
         }
     }
+
 }
