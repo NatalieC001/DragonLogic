@@ -167,7 +167,7 @@ namespace VRDragonBoss.AI
                     break;
 
                 case DragonState.AttackPlayer:
-                    if (navigator != null) navigator.FreestyleToPlayer();
+                    if (navigator != null) navigator.SetDestination(player.position);
                     if (player != null) TryFireball(player.position);
                     break;
 
@@ -176,7 +176,7 @@ namespace VRDragonBoss.AI
                     break;
 
                 case DragonState.Roam:
-                    if (navigator != null) navigator.FreestyleArea();
+                    if (navigator != null) navigator.SetDestination(transform.position); // Basic fallback, usually PickNewDestination
                     break;
             }
         }
