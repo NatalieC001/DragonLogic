@@ -147,7 +147,10 @@ namespace VRDragonBoss.Environment
             Debug.Log($"[ToppleItem] Marked {gridPos} as impassable.");
         }
 
-        if (spillsContents)
+        /// <summary>
+        /// Handles generating elemental surface hazards when a barrel topples, triggering gameboard recipes.
+        /// </summary>
+        private void SpillContents(Vector3 fallDirection, GameBoard board)
         {
             SpillContents(fallDirection, board);
         }

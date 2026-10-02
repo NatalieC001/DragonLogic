@@ -221,6 +221,8 @@ namespace VRDragonBoss.GameBoardSystem
                     }
                 }
             }
+
+            return bestItem;
         }
 
                                     result.pillar = item;

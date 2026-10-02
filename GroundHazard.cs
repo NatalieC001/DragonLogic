@@ -231,11 +231,8 @@ public class GroundHazard : MonoBehaviour, IArrowTarget
                 }
             }
         }
-    }
 
-    private void OnTriggerEnter(Collider other)
-    {
-        if (other.gameObject.CompareTag("Player"))
+        private void OnDestroy()
         {
             playersInside.Add(other.gameObject);
             // Trigger immediately upon entry for responsive feedback
