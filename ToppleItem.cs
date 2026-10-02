@@ -99,7 +99,7 @@ namespace VRDragonBoss.Environment
                 rb.AddForce(pushDir.normalized * toppleForce, ForceMode.Impulse);
                 rb.AddTorque(Random.insideUnitSphere * toppleForce, ForceMode.Impulse);
             }
-            
+
             // Let the SpatialStrategyMiniGame know it's no longer a valid target
             SpatialStrategyMiniGame strategy = FindFirstObjectByType<SpatialStrategyMiniGame>();
             if (strategy != null)
@@ -130,27 +130,51 @@ namespace VRDragonBoss.Environment
             }
         }
 
+        // Wait a brief moment for physics to settle before calculating footprint
+        StartCoroutine(CalculateFootprintCoroutine(pushDir.normalized));
+    }
+
+    private System.Collections.IEnumerator CalculateFootprintCoroutine(Vector3 fallDirection)
+    {
+        yield return new WaitForSeconds(1.5f);
+
+        GameBoard board = FindFirstObjectByType<GameBoard>();
+        if (board != null)
+        {
+            // The physical barrel itself becomes an impassable obstacle
+            Vector2Int gridPos = board.WorldToGrid(transform.position);
+            board.MarkTileImpassable(gridPos);
+            Debug.Log($"[ToppleItem] Marked {gridPos} as impassable.");
+        }
+
         /// <summary>
         /// Handles generating elemental surface hazards when a barrel topples, triggering gameboard recipes.
         /// </summary>
         private void SpillContents(Vector3 fallDirection, GameBoard board)
         {
-            Debug.Log($"<color=cyan>[ToppleItem] Barrel toppled! Spilling {spillType} in direction {fallDirection}</color>");
-
-            if (board == null) return;
-
-            // Spill extends roughly 2 tiles in the direction of the fall
-            Vector3 flatFallDirection = new Vector3(fallDirection.x, 0, fallDirection.z).normalized;
-
-            Vector3 spillPos1 = transform.position + (flatFallDirection * board.tileSize);
-            Vector3 spillPos2 = transform.position + (flatFallDirection * board.tileSize * 2f);
-
-            Vector2Int grid1 = board.WorldToGrid(spillPos1);
-            Vector2Int grid2 = board.WorldToGrid(spillPos2);
-
-            board.ApplyElementToTile(grid1, spillType);
-            board.ApplyElementToTile(grid2, spillType);
+            SpillContents(fallDirection, board);
         }
     }
 
+    /// <summary>
+    /// Handles generating elemental surface hazards when a barrel topples, triggering gameboard recipes.
+    /// </summary>
+    private void SpillContents(Vector3 fallDirection, GameBoard board)
+    {
+        Debug.Log($"<color=cyan>[ToppleItem] Barrel toppled! Spilling {spillType} in direction {fallDirection}</color>");
+
+        if (board == null) return;
+
+        // Spill extends roughly 2 tiles in the direction of the fall
+        Vector3 flatFallDirection = new Vector3(fallDirection.x, 0, fallDirection.z).normalized;
+
+        Vector3 spillPos1 = transform.position + (flatFallDirection * board.tileSize);
+        Vector3 spillPos2 = transform.position + (flatFallDirection * board.tileSize * 2f);
+
+        Vector2Int grid1 = board.WorldToGrid(spillPos1);
+        Vector2Int grid2 = board.WorldToGrid(spillPos2);
+
+        board.ApplyElementToTile(grid1, spillType);
+        board.ApplyElementToTile(grid2, spillType);
+    }
 }
