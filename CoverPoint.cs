@@ -5,7 +5,7 @@ using PixelCrushers;
 /// <summary>
 /// A marker in the world where minions can hide.
 /// </summary>
-public class CoverPoint : MonoBehaviour, IMessageHandler
+public class CoverPoint : MonoBehaviour
 {
     [Tooltip("Maximum number of minions that can hide behind this cover before they charge.")]
     public int capacity = 3;
@@ -37,12 +37,17 @@ public class CoverPoint : MonoBehaviour, IMessageHandler
     /// </summary>
     private void OnEnable()
     {
-        MessageSystem.AddListener(this, "DragonNeedsSupport", string.Empty);
+        EventManager.OnDragonNeedsSupport += HandleDragonNeedsSupport;
     }
 
     private void OnDisable()
     {
-        MessageSystem.RemoveListener(this, "DragonNeedsSupport", string.Empty);
+        EventManager.OnDragonNeedsSupport -= HandleDragonNeedsSupport;
+    }
+
+    private void HandleDragonNeedsSupport()
+    {
+        TriggerCharge();
     }
 
     public void TriggerCharge()
@@ -73,11 +78,5 @@ public class CoverPoint : MonoBehaviour, IMessageHandler
         Destroy(gameObject);
     }
 
-    public void OnMessage(MessageArgs messageArgs)
-    {
-        if (messageArgs.message == "DragonNeedsSupport")
-        {
-            TriggerCharge();
-        }
-    }
+
 }

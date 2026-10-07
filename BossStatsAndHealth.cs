@@ -68,7 +68,7 @@ public class BossStatsAndHealth : MonoBehaviour
 
         currentHealth = Mathf.Max(0f, currentHealth - amount);
 
-        MessageSystem.SendMessage(this, "PlayerShootsBoss", string.Empty, amount);
+        EventManager.TriggerPlayerShootsBoss(amount);
 
         burstAccumulator += amount;
         burstTimer = burstWindow;
@@ -76,19 +76,19 @@ public class BossStatsAndHealth : MonoBehaviour
         {
             burstAccumulator = 0f;
             burstTimer = 0f;
-            MessageSystem.SendMessage(this, "BurstDamageTaken", string.Empty, true);
+            EventManager.TriggerBurstDamageTaken();
         }
 
         if (!criticalFired && IsCritical)
         {
             criticalFired = true;
-            MessageSystem.SendMessage(this, "HealthThresholdReached", string.Empty, true);
+            EventManager.TriggerHealthThresholdReached();
         }
 
         if (currentHealth <= 0f)
         {
             isDead = true;
-            MessageSystem.SendMessage(this, "BossDied", string.Empty, true);
+            EventManager.TriggerBossDied();
         }
     }
 
@@ -98,7 +98,7 @@ public class BossStatsAndHealth : MonoBehaviour
         currentStamina = Mathf.Max(0f, currentStamina - amount);
 
         if (currentStamina <= 0f)
-            MessageSystem.SendMessage(this, "StaminaDepleted", string.Empty, true);
+            EventManager.TriggerStaminaDepleted();
     }
 
     public void RestoreStamina(float amount)
@@ -108,7 +108,7 @@ public class BossStatsAndHealth : MonoBehaviour
         currentStamina = Mathf.Min(maxStamina, currentStamina + amount);
 
         if (wasBelowFull && currentStamina >= maxStamina)
-            MessageSystem.SendMessage(this, "StaminaFullyCharged", string.Empty, true);
+            EventManager.TriggerStaminaFullyCharged();
     }
 
     public void RestoreHealth(float amount)

@@ -121,7 +121,7 @@ public class StandardCreature : MonoBehaviour, IArrowTarget
 
         health -= actualDamage;
 
-        MessageSystem.SendMessage(this, "MinionUnderFire", string.Empty, this);
+        EventManager.TriggerMinionUnderFire(this);
 
         Debug.Log($"[StandardCreature] {gameObject.name} hit by {arrowType} arrow. Took {actualDamage} damage. Health remaining: {health}");
 

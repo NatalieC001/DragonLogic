@@ -46,6 +46,8 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
 
     private Transform player;
 
+    public Dictionary<DragonState, float> LastEvaluatedScores { get; private set; } = new Dictionary<DragonState, float>();
+
     private void Start()
     {
         player = GameObject.FindGameObjectWithTag("Player")?.transform;
@@ -56,7 +58,7 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
     private void OnEnable()
     {
         VRHeadsetStickyBlindness.OnPlayerBlinded += HandlePlayerBlinded;
-        MessageSystem.AddListener(this, "MinionUnderFire", string.Empty);
+        EventManager.OnMinionUnderFire += HandleMinionUnderFire;
 
         if (segmentManager != null)
         {
@@ -69,7 +71,7 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
     private void OnDisable()
     {
         VRHeadsetStickyBlindness.OnPlayerBlinded -= HandlePlayerBlinded;
-        MessageSystem.RemoveListener(this, "MinionUnderFire", string.Empty);
+        EventManager.OnMinionUnderFire -= HandleMinionUnderFire;
 
         if (segmentManager != null)
         {
@@ -136,6 +138,8 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
                 bestState = kvp.Key;
             }
         }
+
+        LastEvaluatedScores = scores;
 
         if (bestState != CurrentState)
         {
@@ -235,13 +239,15 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
         EvaluateState();
     }
 
+    private void HandleMinionUnderFire(StandardCreature minion)
+    {
+        minionsNeedDefenseFlag = true;
+        EvaluateState();
+    }
+
     public void OnMessage(MessageArgs messageArgs)
     {
-        if (messageArgs.message == "MinionUnderFire")
-        {
-            minionsNeedDefenseFlag = true;
-            EvaluateState();
-        }
+        // Remains for any potential future spline PixelCrusher messages
     }
 
     // --- Segment Manager C# Event Hooks ---
@@ -270,7 +276,7 @@ public class DragonBrain : MonoBehaviour, IMessageHandler
     private void CommandMinionsToCharge()
     {
         OnPlayRoar?.Invoke();
-        MessageSystem.SendMessage(this, "DragonNeedsSupport", string.Empty);
+        EventManager.TriggerDragonNeedsSupport();
     }
 
     private bool HasDefendCrystal()
