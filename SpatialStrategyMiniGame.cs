@@ -17,10 +17,8 @@ namespace VRDragonBoss.GameBoardSystem
         private Transform player;
 
         [Header("Arena Boundaries")]
-        [Tooltip("The center of the playable flat 3D plane. (Fallback if plane is missing)")]
-        public Transform arenaCenter;
-        [Tooltip("The plane object representing the arena. The mesh bounds will define the total area.")]
-        public MeshFilter arenaPlane;
+        [Tooltip("The single GameObject representing the arena plane. Its Transform acts as the center, and its MeshFilter defines the bounds.")]
+        public GameObject arenaObject;
 
         [Header("Grid Strategy Settings")]
         [Tooltip("How many tiles the arena should be divided into along one axis (e.g., 3 means a 3x3 grid).")]
@@ -86,9 +84,16 @@ namespace VRDragonBoss.GameBoardSystem
 
     private void GenerateTestGrid()
     {
+            if (arenaObject == null)
+            {
+                Debug.LogWarning("[SpatialStrategyMiniGame] Arena Object is not assigned! Cannot generate test grid.");
+                return;
+            }
+
+            MeshFilter arenaPlane = arenaObject.GetComponent<MeshFilter>();
         if (arenaPlane == null)
         {
-            Debug.LogWarning("[SpatialStrategyMiniGame] Arena Plane is not assigned! Cannot generate test grid.");
+                Debug.LogWarning("[SpatialStrategyMiniGame] Arena Object does not have a MeshFilter! Cannot generate test grid.");
             return;
         }
 
@@ -109,7 +114,7 @@ namespace VRDragonBoss.GameBoardSystem
 
         // Calculate size based on mesh and scale
         Bounds meshBounds = arenaPlane.mesh.bounds;
-        Vector3 planeScale = arenaPlane.transform.lossyScale;
+        Vector3 planeScale = arenaObject.transform.lossyScale;
 
         float planeWidth = meshBounds.size.x * planeScale.x;
         float planeDepth = meshBounds.size.z * planeScale.z;
@@ -117,9 +122,9 @@ namespace VRDragonBoss.GameBoardSystem
         float tileSizeX = planeWidth / gridDivisions;
         float tileSizeZ = planeDepth / gridDivisions;
 
-        Vector3 startPos = arenaPlane.transform.position
-            - (arenaPlane.transform.right * (planeWidth / 2f))
-            - (arenaPlane.transform.forward * (planeDepth / 2f));
+        Vector3 startPos = arenaObject.transform.position
+            - (arenaObject.transform.right * (planeWidth / 2f))
+            - (arenaObject.transform.forward * (planeDepth / 2f));
 
         GameObject gridContainer = new GameObject("TestGridContainer");
         gridContainer.transform.parent = this.transform;
@@ -130,8 +135,8 @@ namespace VRDragonBoss.GameBoardSystem
             {
                 // Calculate position for the center of this tile
                 Vector3 tilePos = startPos
-                    + (arenaPlane.transform.right * (x * tileSizeX + (tileSizeX / 2f)))
-                    + (arenaPlane.transform.forward * (y * tileSizeZ + (tileSizeZ / 2f)));
+                    + (arenaObject.transform.right * (x * tileSizeX + (tileSizeX / 2f)))
+                    + (arenaObject.transform.forward * (y * tileSizeZ + (tileSizeZ / 2f)));
 
                 // Slight offset to prevent Z-fighting with the arena plane
                 tilePos.y += 0.05f;
@@ -199,12 +204,12 @@ namespace VRDragonBoss.GameBoardSystem
         /// </summary>
         public Vector3 GetOptimalHazardCoordinate()
         {
-            if (player == null || arenaCenter == null || !hasGeneratedGrid)
+            if (player == null || arenaObject == null || !hasGeneratedGrid)
                 return transform.position;
 
             Vector3 playerPos = player.position;
             playerPos.y = 0;
-            Vector3 centerPos = arenaCenter.position;
+            Vector3 centerPos = arenaObject.transform.position;
             centerPos.y = 0;
 
             // Player's path to safety
@@ -292,7 +297,7 @@ namespace VRDragonBoss.GameBoardSystem
             }
             else
             {
-                bestWorldPos.y = arenaCenter.position.y;
+                bestWorldPos.y = arenaObject.transform.position.y;
             }
 
             // Highlight the tile visually as the target, and determine element
@@ -341,7 +346,7 @@ namespace VRDragonBoss.GameBoardSystem
         /// </summary>
         public ToppleItem GetOptimalToppleTarget()
         {
-            if (player == null || arenaCenter == null) return null;
+            if (player == null || arenaObject == null) return null;
 
             UpdateToppleItemsList();
 
@@ -352,7 +357,7 @@ namespace VRDragonBoss.GameBoardSystem
             playerPos.y = 0;
 
             // The ideal pillar to knock over is one that blocks the player's path inward.
-            Vector3 escapeVector = (arenaCenter.position - playerPos).normalized;
+            Vector3 escapeVector = (arenaObject.transform.position - playerPos).normalized;
             Vector3 idealBlockPoint = playerPos + (escapeVector * 10f);
 
             foreach (var item in availableToppleItems)
@@ -496,7 +501,7 @@ namespace VRDragonBoss.GameBoardSystem
             // We want it to fall between the player and the center, creating a wall.
             Vector3 playerPos = player.position;
             playerPos.y = 0;
-            Vector3 centerPos = arenaCenter.position;
+            Vector3 centerPos = arenaObject.transform.position;
             centerPos.y = 0;
 
             // The point we want to block
