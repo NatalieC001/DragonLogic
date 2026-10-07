@@ -11,7 +11,6 @@ using PixelCrushers;
 public class SegmentManager : MonoBehaviour, IMessageHandler
 {
     [Header("Body Prefabs")]
-    public GameObject headPrefab;
     public GameObject frontLegsPrefab;
     public GameObject bodyPrefab;
     public GameObject backLegsPrefab;
