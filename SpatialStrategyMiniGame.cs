@@ -17,10 +17,27 @@ namespace VRDragonBoss.GameBoardSystem
         private Transform player;
 
         [Header("Arena Boundaries")]
-        [Tooltip("The center of the playable flat 3D plane.")]
+        [Tooltip("The center of the playable flat 3D plane. (Fallback if plane is missing)")]
         public Transform arenaCenter;
-        [Tooltip("The size of the square arena for quadrant calculation.")]
-        public float arenaSize = 40f;
+        [Tooltip("The plane object representing the arena. The mesh bounds will define the total area.")]
+        public MeshFilter arenaPlane;
+
+        [Header("Grid Strategy Settings")]
+        [Tooltip("How many tiles the arena should be divided into along one axis (e.g., 3 means a 3x3 grid).")]
+        public int gridDivisions = 10;
+
+        [Tooltip("Toggle the visual test grid in the editor/game.")]
+        public bool testMode = false;
+
+        [Tooltip("Weight for choosing tiles that connect to existing obstacles.")]
+        public float wallBuildingWeight = 2.0f;
+        [Tooltip("Weight for choosing tiles that block the player's path to the center.")]
+        public float escapeBlockingWeight = 1.5f;
+        [Tooltip("Weight for choosing tiles immediately surrounding the player (herding).")]
+        public float playerProximityWeight = 1.0f;
+
+        private TestTileVisualizer[,] testGrid;
+        private bool hasGeneratedGrid = false;
 
         [Header("Topple Objects")]
         private List<ToppleItem> availableToppleItems = new List<ToppleItem>();
@@ -36,6 +53,132 @@ namespace VRDragonBoss.GameBoardSystem
         player = playerTransform;
         cachedBoard = FindFirstObjectByType<GameBoard>();
         UpdateToppleItemsList();
+
+        GenerateTestGrid();
+    }
+
+    private bool lastTestModeState = false;
+
+    private void Update()
+    {
+        if (hasGeneratedGrid && testMode != lastTestModeState)
+        {
+            lastTestModeState = testMode;
+            ToggleTestGrid(testMode);
+        }
+    }
+
+    private void ToggleTestGrid(bool show)
+    {
+        if (testGrid == null) return;
+
+        for (int x = 0; x < gridDivisions; x++)
+        {
+            for (int y = 0; y < gridDivisions; y++)
+            {
+                if (testGrid[x, y] != null && testGrid[x, y].outerQuad != null)
+                {
+                    testGrid[x, y].outerQuad.enabled = show;
+                }
+            }
+        }
+    }
+
+    private void GenerateTestGrid()
+    {
+        if (arenaPlane == null)
+        {
+            Debug.LogWarning("[SpatialStrategyMiniGame] Arena Plane is not assigned! Cannot generate test grid.");
+            return;
+        }
+
+        // Clean up old grid if it exists
+        if (testGrid != null)
+        {
+            for (int x = 0; x < gridDivisions; x++)
+            {
+                for (int y = 0; y < gridDivisions; y++)
+                {
+                    if (testGrid[x, y] != null)
+                        Destroy(testGrid[x, y].gameObject);
+                }
+            }
+        }
+
+        testGrid = new TestTileVisualizer[gridDivisions, gridDivisions];
+
+        // Calculate size based on mesh and scale
+        Bounds meshBounds = arenaPlane.mesh.bounds;
+        Vector3 planeScale = arenaPlane.transform.lossyScale;
+
+        float planeWidth = meshBounds.size.x * planeScale.x;
+        float planeDepth = meshBounds.size.z * planeScale.z;
+
+        float tileSizeX = planeWidth / gridDivisions;
+        float tileSizeZ = planeDepth / gridDivisions;
+
+        Vector3 startPos = arenaPlane.transform.position
+            - (arenaPlane.transform.right * (planeWidth / 2f))
+            - (arenaPlane.transform.forward * (planeDepth / 2f));
+
+        GameObject gridContainer = new GameObject("TestGridContainer");
+        gridContainer.transform.parent = this.transform;
+
+        for (int x = 0; x < gridDivisions; x++)
+        {
+            for (int y = 0; y < gridDivisions; y++)
+            {
+                // Calculate position for the center of this tile
+                Vector3 tilePos = startPos
+                    + (arenaPlane.transform.right * (x * tileSizeX + (tileSizeX / 2f)))
+                    + (arenaPlane.transform.forward * (y * tileSizeZ + (tileSizeZ / 2f)));
+
+                // Slight offset to prevent Z-fighting with the arena plane
+                tilePos.y += 0.05f;
+
+                GameObject tileObj = new GameObject($"TestTile_{x}_{y}");
+                tileObj.transform.position = tilePos;
+                tileObj.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // Make quad lay flat
+                tileObj.transform.parent = gridContainer.transform;
+
+                // Outer Quad (Opaque Gray)
+                GameObject outerQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                outerQuad.name = "OuterQuad";
+                outerQuad.transform.parent = tileObj.transform;
+                outerQuad.transform.localPosition = Vector3.zero;
+                outerQuad.transform.localRotation = Quaternion.identity;
+                // Scale outer quad to fit the tile size exactly
+                outerQuad.transform.localScale = new Vector3(tileSizeX, tileSizeZ, 1f);
+                Destroy(outerQuad.GetComponent<MeshCollider>()); // Use BoxCollider instead
+
+                // Inner Quad (Hidden, smaller)
+                GameObject innerQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                innerQuad.name = "InnerQuad";
+                innerQuad.transform.parent = tileObj.transform;
+                innerQuad.transform.localPosition = new Vector3(0, 0, -0.01f); // Slightly above outer quad
+                innerQuad.transform.localRotation = Quaternion.identity;
+                // Scale inner quad to be slightly smaller
+                innerQuad.transform.localScale = new Vector3(tileSizeX * 0.6f, tileSizeZ * 0.6f, 1f);
+                Destroy(innerQuad.GetComponent<MeshCollider>());
+
+                // Box Collider for collision resets
+                BoxCollider boxColl = tileObj.AddComponent<BoxCollider>();
+                boxColl.isTrigger = true; // Use trigger to avoid physically stopping the dragon's body
+                boxColl.size = new Vector3(tileSizeX, tileSizeZ, 0.5f);
+
+                // Setup visualizer script
+                TestTileVisualizer visualizer = tileObj.AddComponent<TestTileVisualizer>();
+                visualizer.outerQuad = outerQuad.GetComponent<MeshRenderer>();
+                visualizer.innerQuad = innerQuad.GetComponent<MeshRenderer>();
+                visualizer.Initialize();
+
+                testGrid[x, y] = visualizer;
+            }
+        }
+
+        hasGeneratedGrid = true;
+        lastTestModeState = testMode;
+        ToggleTestGrid(testMode);
     }
 
         private void UpdateToppleItemsList()
@@ -50,60 +193,146 @@ namespace VRDragonBoss.GameBoardSystem
         }
 
         /// <summary>
-        /// Returns the best calculated world position to cast dark fire to trap the player.
-        /// This acts like chess: it looks at where the player is, and attempts to block their
-        /// path to the center, forcing them into a corner or edge.
+        /// The Enclosure Algorithm (VR Herding Strategy)
+        /// Uses a utility scoring system across the dynamic grid to trap the VR player
+        /// by building "soft" and "hard" walls, herding them into taking debuffs or wasting time.
         /// </summary>
         public Vector3 GetOptimalHazardCoordinate()
         {
-            if (player == null || arenaCenter == null) return transform.position;
-
-            // The goal of the AI is to cut off the player's escape to the center of the room.
-            // It wants to push them toward the edges.
+            if (player == null || arenaCenter == null || !hasGeneratedGrid)
+                return transform.position;
 
             Vector3 playerPos = player.position;
-            Vector3 centerPos = arenaCenter.position;
             playerPos.y = 0;
+            Vector3 centerPos = arenaCenter.position;
             centerPos.y = 0;
 
-            // Calculate the vector from the player to the center of the arena (their primary escape route)
+            // Player's path to safety
             Vector3 escapeVector = (centerPos - playerPos).normalized;
 
-            // Target a spot directly in their path to the center
-            Vector3 targetCoordinate = playerPos + (escapeVector * (hazardRadius * 1.5f));
+            float highestScore = -1f;
+            Vector2Int bestTileIndices = new Vector2Int(0, 0);
+            Vector3 bestWorldPos = transform.position;
 
-            // Prevent stacking hazards exactly on top of each other
-            bool isClear = false;
-            int attempts = 0;
-
-            while (!isClear && attempts < 5)
+            // 1. Evaluate Every Tile
+            for (int x = 0; x < gridDivisions; x++)
             {
-                isClear = true;
-                foreach (var hazard in activeHazardZones)
+                for (int y = 0; y < gridDivisions; y++)
                 {
-                    if (Vector3.Distance(targetCoordinate, hazard) < hazardRadius)
+                    if (testGrid[x, y] == null) continue;
+
+                    Vector3 tileWorldPos = testGrid[x, y].transform.position;
+                    tileWorldPos.y = 0;
+
+                    float score = 0f;
+
+                    // Rule A: Proximity to Player (Herding)
+                    float distToPlayer = Vector3.Distance(tileWorldPos, playerPos);
+                    if (distToPlayer < hazardRadius * 2f && distToPlayer > hazardRadius * 0.5f)
                     {
-                        // Shift the target left or right if a hazard is already there
-                        Vector3 cross = Vector3.Cross(escapeVector, Vector3.up);
-                        targetCoordinate += cross * (hazardRadius * 1.2f);
-                        isClear = false;
-                        break;
+                        // High score for tiles immediately around the player (but not directly on them)
+                        score += playerProximityWeight * (10f / Mathf.Max(distToPlayer, 0.1f));
+                    }
+
+                    // Rule B: Blocking the Escape Route
+                    // Is this tile generally in the direction the player wants to run?
+                    Vector3 toTile = (tileWorldPos - playerPos).normalized;
+                    float dotProduct = Vector3.Dot(escapeVector, toTile);
+                    if (dotProduct > 0.5f && distToPlayer < hazardRadius * 3f)
+                    {
+                        score += escapeBlockingWeight * 5f * dotProduct;
+                    }
+
+                    // Rule C: Wall Building (Connecting to existing obstacles)
+                    int nearbyHazards = 0;
+                    foreach (Vector3 hazard in activeHazardZones)
+                    {
+                        float dist = Vector3.Distance(tileWorldPos, new Vector3(hazard.x, 0, hazard.z));
+                        // If it's too close to another hazard, it's a waste (overlap)
+                        if (dist < hazardRadius * 0.5f)
+                        {
+                            score = -100f; // Invalid spot
+                            break;
+                        }
+                        // If it's adjacent, it forms a wall!
+                        else if (dist < hazardRadius * 2f)
+                        {
+                            nearbyHazards++;
+                        }
+                    }
+
+                    foreach (ToppleItem pillar in availableToppleItems)
+                    {
+                        if (pillar != null && pillar.IsToppled)
+                        {
+                            float dist = Vector3.Distance(tileWorldPos, new Vector3(pillar.transform.position.x, 0, pillar.transform.position.z));
+                            if (dist < hazardRadius * 2f)
+                            {
+                                nearbyHazards++; // Connect to fallen pillars
+                            }
+                        }
+                    }
+
+                    score += nearbyHazards * wallBuildingWeight * 5f;
+
+                    // Selection
+                    if (score > highestScore)
+                    {
+                        highestScore = score;
+                        bestTileIndices = new Vector2Int(x, y);
+                        bestWorldPos = testGrid[x, y].transform.position;
                     }
                 }
-                attempts++;
             }
 
             // Snap to ground level
-            if (Physics.Raycast(targetCoordinate + Vector3.up * 10f, Vector3.down, out RaycastHit hit, 20f))
+            if (Physics.Raycast(bestWorldPos + Vector3.up * 10f, Vector3.down, out RaycastHit hit, 20f))
             {
-                targetCoordinate.y = hit.point.y;
+                bestWorldPos.y = hit.point.y;
             }
             else
             {
-                targetCoordinate.y = arenaCenter.position.y;
+                bestWorldPos.y = arenaCenter.position.y;
             }
 
-            return targetCoordinate;
+            // Highlight the tile visually as the target, and determine element
+            HazardType requestedHazard = DetermineHazardTypeForTile(bestWorldPos);
+
+            if (testGrid[bestTileIndices.x, bestTileIndices.y] != null)
+            {
+                testGrid[bestTileIndices.x, bestTileIndices.y].HighlightAsTarget(requestedHazard);
+            }
+
+            return bestWorldPos;
+        }
+
+        private HazardType DetermineHazardTypeForTile(Vector3 targetPos)
+        {
+            // Synergy check: look for nearby elements to combo
+            if (cachedBoard != null)
+            {
+                Vector2Int gridPos = cachedBoard.WorldToGrid(targetPos);
+
+                // Check surrounding tiles for Oil to ignite
+                for (int x = -1; x <= 1; x++)
+                {
+                    for (int y = -1; y <= 1; y++)
+                    {
+                        Vector2Int adj = gridPos + new Vector2Int(x, y);
+                        if (cachedBoard.GetTileState(adj) == HazardType.Oil)
+                        {
+                            return HazardType.Fire; // Combo!
+                        }
+                        else if (cachedBoard.GetTileState(adj) == HazardType.Water)
+                        {
+                            return HazardType.Electricity; // Combo!
+                        }
+                    }
+                }
+            }
+
+            // Default fallback
+            return HazardType.Fire;
         }
 
         /// <summary>
