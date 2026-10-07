@@ -41,6 +41,7 @@ namespace VRDragonBoss.AI
         public BossNavigator navigator;
         public DragonFireballCaster fireball;
         public DragonSnakeMovementStyle dragon;
+        public SegmentManager segmentManager;
         public SpatialStrategyMiniGame strategyMiniGame;
         public BossStatsAndHealth statsAndHealth;
 
@@ -259,10 +260,10 @@ namespace VRDragonBoss.AI
                 statsAndHealth.TakeDamage(amount, ElementTypeOB7.Normal);
 
                 float hpPerSeg = config != null ? config.healthPerSegment : 10f;
-                if (damageAccumulator >= hpPerSeg && dragon.BodySegmentCount > 3)
+                if (damageAccumulator >= hpPerSeg && segmentManager != null && segmentManager.BodySegmentCount > 3)
                 {
                     damageAccumulator -= hpPerSeg;
-                    dragon.ShedOneBodySegment();
+                    segmentManager.ShedOneBodySegment();
                     OnHealthSegmentLost();
                 }
                 EvaluateState();
@@ -280,7 +281,7 @@ namespace VRDragonBoss.AI
         private bool NeedsHealing()
         {
             // Heal if we are below max body segments (have lost a piece)
-            return dragon != null && dragon.BodySegmentCount < 8; // Assuming 8 is max as in original code
+            return segmentManager != null && segmentManager.BodySegmentCount < 8; // Assuming 8 is max as in original code
         }
 
         private bool HasDefendCrystal()
