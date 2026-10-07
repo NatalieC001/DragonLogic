@@ -120,6 +120,7 @@ public class BossNavigator : MonoBehaviour, IMessageHandler
 #endif
     }
 
+    public void Freestyle(Vector3 pos) { SetDestination(pos); }
     public void FreestyleArea() { PickNewDestination(); }
     public void FreestyleToPlayer() { SetDestination(ResolvePlayerPosition()); }
     public void MoveToNearestObservation() { RequestNearestObservationPath(); }
