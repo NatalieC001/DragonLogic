@@ -14,10 +14,12 @@ using System.Collections.Generic;
 /// BossNavigator moves this transform. This script never moves anything
 /// forward — it only lays the body out behind the head.
 /// </summary>
-public class DragonSnakeMovementStyle : MonoBehaviour
+namespace VRDragonBoss.AI
 {
-    [Header("Managers")]
-    public SegmentManager segmentManager;
+    public class DragonSnakeMovementStyle : MonoBehaviour
+    {
+        [Header("Managers")]
+        public SegmentManager segmentManager;
 
     [Header("Ripple")]
     [Tooltip("How many seconds of history to keep.")]
@@ -190,6 +192,7 @@ public class DragonSnakeMovementStyle : MonoBehaviour
         return headHistory[headHistory.Count - 1];
     }
 
-    public void PauseSplineFollow() { }
-    public void ResumeSplineFollow() { }
+        public void PauseSplineFollow() { }
+        public void ResumeSplineFollow() { }
+    }
 }

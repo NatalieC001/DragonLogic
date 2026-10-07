@@ -6,10 +6,12 @@ using Dreamteck.Splines;
 /// Attached to individual segments (Head, Body, Tail) of the Asian Dragon Boss.
 /// Handles segment health and reports destruction to the main SegmentManager.
 /// </summary>
-[RequireComponent(typeof(SplineFollower))]
-public class DragonSegment : MonoBehaviour, IArrowTarget
+namespace VRDragonBoss.AI
 {
-    [Header("Segment Stats")]
+    [RequireComponent(typeof(SplineFollower))]
+    public class DragonSegment : MonoBehaviour, IArrowTarget
+    {
+        [Header("Segment Stats")]
     [Tooltip("Can this individual piece be destroyed mid-fight? (Check True for body segments, False for Head/Legs/Tail).")]
     public bool isDestructiblePart = true;
 
@@ -179,13 +181,14 @@ public class DragonSegment : MonoBehaviour, IArrowTarget
         return 2.0f;
     }
 
-    public virtual void TriggerTotalDeath()
-    {
-        if (segmentCollider != null)
+        public virtual void TriggerTotalDeath()
         {
-            segmentCollider.enabled = false;
-        }
+            if (segmentCollider != null)
+            {
+                segmentCollider.enabled = false;
+            }
 
-        Destroy(gameObject);
+            Destroy(gameObject);
+        }
     }
 }

@@ -396,63 +396,20 @@ namespace VRDragonBoss.GameBoardSystem
                 {
                     if (item == null || item.IsToppled) continue;
 
-        // Recipe Opportunity Check using GameBoard
-        GameBoard board = FindFirstObjectByType<GameBoard>();
-        if (board != null)
-        {
-            foreach (var item in availableToppleItems)
-            {
-                if (item == null || item.IsToppled) continue;
-
-                // Example Recipe: Oil into Fire
-                if (item.spillType == HazardType.Oil)
-                {
-                    // Check if there is a Fire hazard within topple distance
-                    // (Roughly 2 tiles away from the barrel)
-                    for (int x = -2; x <= 2; x++)
+                    // Example Recipe: Oil into Fire
+                    if (item.spillType == HazardType.Oil)
                     {
-                        for (int y = -2; y <= 2; y++)
+                        // Check if there is a Fire hazard within topple distance
+                        // (Roughly 2 tiles away from the barrel)
+                        for (int x = -2; x <= 2; x++)
                         {
-                            Vector2Int gridPos = board.WorldToGrid(item.transform.position) + new Vector2Int(x, y);
-                            if (board.GetTileState(gridPos) == HazardType.Fire)
+                            for (int y = -2; y <= 2; y++)
                             {
-                                Vector3 fireWorldPos = board.GridToWorld(gridPos);
-                                Vector3 fallDir = (fireWorldPos - item.transform.position).normalized;
-
-                                result.pillar = item;
-                                result.optimalHitDirection = fallDir;
-                                result.isRecipeOpportunity = true;
-                                return result;
-                            }
-                        }
-                    }
-                }
-
-                // Example Recipe: Water into Fire
-                if (item.spillType == HazardType.Water)
-                {
-                    for (int x = -2; x <= 2; x++)
-                    {
-                        for (int y = -2; y <= 2; y++)
-                        {
-                            Vector2Int gridPos = board.WorldToGrid(item.transform.position) + new Vector2Int(x, y);
-                            if (board.GetTileState(gridPos) == HazardType.Fire)
-                            {
-                                Vector3 fireWorldPos = board.GridToWorld(gridPos);
-                                Vector3 fallDir = (fireWorldPos - item.transform.position).normalized;
-
-                                result.pillar = item;
-                                result.optimalHitDirection = fallDir;
-                                result.isRecipeOpportunity = true;
-                                return result;
-                            }
-                        }
-                    }
-                }
-            }
-
-            return bestItem;
-        }
+                                Vector2Int gridPos = board.WorldToGrid(item.transform.position) + new Vector2Int(x, y);
+                                if (board.GetTileState(gridPos) == HazardType.Fire)
+                                {
+                                    Vector3 fireWorldPos = board.GridToWorld(gridPos);
+                                    Vector3 fallDir = (fireWorldPos - item.transform.position).normalized;
 
                                     result.pillar = item;
                                     result.optimalHitDirection = fallDir;

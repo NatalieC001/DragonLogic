@@ -8,11 +8,12 @@ using PixelCrushers;
 /// Handles instantiation, shedding, regeneration, gap closure, and damage calculations.
 /// Emits C# Actions for combat state changes, completely decoupled from movement.
 /// </summary>
-public class SegmentManager : MonoBehaviour, IMessageHandler
+namespace VRDragonBoss.AI
 {
-    [Header("Body Prefabs")]
-    public GameObject headPrefab;
-    public GameObject frontLegsPrefab;
+    public class SegmentManager : MonoBehaviour, IMessageHandler
+    {
+        [Header("Body Prefabs")]
+        public GameObject frontLegsPrefab;
     public GameObject bodyPrefab;
     public GameObject backLegsPrefab;
     public GameObject tailPrefab;
@@ -360,5 +361,6 @@ public class SegmentManager : MonoBehaviour, IMessageHandler
         }
         activeSegments.Clear();
         OnSegmentCountChanged?.Invoke(0);
+        }
     }
 }
