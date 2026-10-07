@@ -147,13 +147,13 @@ namespace VRDragonBoss.AI
                         OnSwoopStart?.Invoke();
                         OnPlayAngryExpression?.Invoke();
                         Vector3 swoopTarget = currentToppleTarget.transform.position + (targetData.optimalHitDirection * 15f);
-                        navigator.Freestyle(swoopTarget); // Fixed SetDestination -> Freestyle
+                        navigator.SetDestination(swoopTarget); // Fixed SetDestination -> Freestyle
                     }
                     break;
 
                 case DragonState.DenyArea:
                     Vector3 hazardTarget = strategyMiniGame.GetOptimalHazardCoordinate();
-                    if (navigator != null) navigator.Freestyle(hazardTarget); // Fixed SetDestination -> Freestyle
+                    if (navigator != null) navigator.SetDestination(hazardTarget); // Fixed SetDestination -> Freestyle
                     TryFireball(hazardTarget);
                     break;
 
