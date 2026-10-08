@@ -9,7 +9,7 @@ public class TestTileVisualizer : MonoBehaviour
     private MaterialPropertyBlock outerPropBlock;
     private MaterialPropertyBlock innerPropBlock;
 
-    private Color defaultOuterColor = Color.gray;
+    private Color defaultOuterColor = new Color(0.5f, 0.5f, 0.5f, 0.3f); // Semi-transparent gray
 
     private void Awake()
     {
@@ -50,7 +50,7 @@ public class TestTileVisualizer : MonoBehaviour
         }
     }
 
-    private void ResetVisuals()
+    public void ResetVisuals()
     {
         if (outerQuad != null)
         {
@@ -65,15 +65,8 @@ public class TestTileVisualizer : MonoBehaviour
         }
     }
 
-    private void OnTriggerEnter(Collider other)
-    {
-        ResetVisuals();
-    }
-
-    private void OnCollisionEnter(Collision collision)
-    {
-        ResetVisuals();
-    }
+    // Removed OnTriggerEnter and OnCollisionEnter resets,
+    // SpatialStrategyMiniGame now manages clearing the target manually.
 
     private Color GetColorForHazard(HazardType hazardType)
     {
